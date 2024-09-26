@@ -1,0 +1,111 @@
+ AS V1.42 Beta [Bld 276] - Source File test_usart_echo.asm - Page 1 - 9/24/2024 18:37:7
+
+
+    1/   0 :                            ; USART registers
+    2/   0 : =8H                        USART_DATA:	EQU	08h
+    3/   0 : =9H                        USART_CMD:	EQU	09h
+    4/   0 :                            
+    5/   0 : 21 00 C0                   START:		LXI	H,0C000h
+    6/   3 : F9                         		SPHL
+    7/   4 : CD 35 00                   		CALL	USART_INIT
+    8/   7 :                            
+    9/   7 :                            ; write a banner
+   10/   7 : 3E 38                      		MVI	A,38h	; '8'
+   11/   9 : 4F                         		MOV	C,A
+   12/   A : CD 56 00                   		CALL	USART_OUT
+   13/   D : 3E 30                      		MVI	A,30h	; '0'
+   14/   F : 4F                         		MOV	C,A
+   15/  10 : CD 56 00                   		CALL	USART_OUT
+   16/  13 : 3E 38                      		MVI	A,38h	; '8'
+   17/  15 : 4F                         		MOV	C,A
+   18/  16 : CD 56 00                   		CALL	USART_OUT
+   19/  19 : 3E 35                      		MVI	A,35h	; '5'
+   20/  1B : 4F                         		MOV	C,A
+   21/  1C : CD 56 00                   		CALL	USART_OUT
+   22/  1F : 3E 0D                      		MVI	A,0Dh	; CR
+   23/  21 : 4F                         		MOV	C,A
+   24/  22 : CD 56 00                   		CALL	USART_OUT
+   25/  25 : 3E 0A                      		MVI	A,0Ah	; LF
+   26/  27 : 4F                         		MOV	C,A
+   27/  28 : CD 56 00                   		CALL USART_OUT
+   28/  2B :                            
+   29/  2B : CD 4C 00                   LOOP:		CALL USART_IN
+   30/  2E : 4F                         		MOV C,A
+   31/  2F : CD 56 00                   		CALL USART_OUT
+   32/  32 : C3 2B 00                   		JMP LOOP
+   33/  35 :                            
+   34/  35 : 3E 00                      USART_INIT: 	MVI A,00h
+   35/  37 :                            ; Set USART to command mode - configure sync operation, write two dummy sync characters
+   36/  37 : D3 09                      		OUT USART_CMD
+   37/  39 : D3 09                      		OUT USART_CMD
+   38/  3B : D3 09                      		OUT USART_CMD
+   39/  3D :                            ; Issue reset command
+   40/  3D : 3E 40                      		MVI A,40h
+   41/  3F : D3 09                      		OUT USART_CMD
+   42/  41 :                            ; Write mode instruction - 1 stop bit, no parity, 8 bits, divide clock by 16
+   43/  41 : 3E 4E                      		MVI A,4Eh
+   44/  43 : D3 09                      		OUT USART_CMD
+   45/  45 :                            ; Write command instruction - activate RTS, reset error flags, enable RX, activate DTR, enable TX
+   46/  45 : 3E 37                      		MVI A,37h
+   47/  47 : D3 09                      		OUT USART_CMD
+   48/  49 :                            ; Clear the data register
+   49/  49 : DB 08                      		IN USART_DATA
+   50/  4B : C9                         		RET
+   51/  4C :                            
+   52/  4C :                            ; Read character from USART
+   53/  4C : DB 09                      USART_IN:	IN	USART_CMD	; Read USART status
+   54/  4E : E6 02                      		ANI	02h		; Test RxRdy bit
+   55/  50 : CA 4C 00                   		JZ	USART_IN	; Wait for the data
+   56/  53 : DB 08                      		IN	USART_DATA	; Read character
+   57/  55 : C9                         		RET
+   58/  56 :                            
+   59/  56 :                            ; Write character to USART
+   60/  56 : DB 09                      USART_OUT:	IN	USART_CMD
+ AS V1.42 Beta [Bld 276] - Source File test_usart_echo.asm - Page 2 - 9/24/2024 18:37:7
+
+
+   61/  58 : E6 01                      		ANI	01h		; Test TxRdy
+   62/  5A : CA 56 00                   		JZ	USART_OUT	; Wait until USART is ready to transmit
+   63/  5D : 79                         		MOV	A,C
+   64/  5E : D3 08                      		OUT	USART_DATA	; Write character
+   65/  60 : C9                         		RET
+   66/  61 :                            
+ AS V1.42 Beta [Bld 276] - Source File test_usart_echo.asm - Page 3 - 9/24/2024 18:37:7
+
+
+  Symbol Table (* = unused):
+  --------------------------
+
+*ARCHITECTURE :                                        "i386-unknown-win32" - |
+*CASESENSITIVE :                  0 - | *CONSTPI :        3.141592653589793 - |
+*DATE :                 "9/24/2024" - | *FALSE :                          0 - |
+*FLOATMAX :      1.797693134866E308 - | *HAS64 :                          1 - |
+*LISTON :                         1 - |  LOOP :                          2B C |
+*MACEXP :                         7 - | *MOMCPU :                      8085 - |
+*MOMCPUNAME :                "8085" - | *NESTMAX :                      100 - |
+*RELAXED :                        0 - | *START :                          0 C |
+*TIME :                   "18:37:7" - | *TRUE :                           1 - |
+ USART_CMD :                      9 - |  USART_DATA :                     8 - |
+ USART_IN :                      4C C |  USART_INIT :                    35 C |
+ USART_OUT :                     56 C | *VERSION :                     142F - |
+*Z80SYNTAX :                      0 - |
+
+     24 symbols
+     18 unused symbols
+
+ AS V1.42 Beta [Bld 276] - Source File test_usart_echo.asm - Page 4 - 9/24/2024 18:37:7
+
+
+  Code Pages:
+  ----------
+
+STANDARD (0 changed characters)
+
+1 code page
+
+0.04 seconds assembly time
+
+     66 lines source file
+      2 passes
+      0 errors
+      0 warnings
