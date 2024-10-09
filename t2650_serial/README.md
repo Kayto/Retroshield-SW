@@ -1,5 +1,6 @@
 # 2650	Serial Echo
- Serial Echo code modified to incorporate delay routines to support Teensy 3.6
+ Serial Echo code modified to incorporate delay routines to support Teensy 3.6.
+ 
  Adding an extra nop within dlay (bdly) proved more stable.
  
  
