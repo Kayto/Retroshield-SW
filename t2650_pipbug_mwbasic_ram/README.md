@@ -3,9 +3,9 @@ The PipBug code has been modified to incorporate delay routines to support Teens
 This means removal of the code patch that was in the original t2650_pipbug.ino. See notes for the t2650_serial code.
  
 I tried assembling a combined pipbug and BASIC rom. Given the overlap on the RAM and ROM in the memory map it fell into the "too hard to do" category. As a result I modified the teensy code to load MicroWorld BASIC into ram at boot.
-The code is located at $0800.
+The code is located at $0800, so can be run with G0800 CR.
  
- The memory map therefore looks like this.
+ The memory map looks like this.
 ``` 
 ROM
    0000-03FF   PIPBUG in ROM
