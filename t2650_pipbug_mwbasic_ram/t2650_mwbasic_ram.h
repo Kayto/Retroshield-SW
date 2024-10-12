@@ -2,7 +2,7 @@
 #define _RAM_BIN_H
 
 ////////////////////////////////////////////////////////////////////
-// MicroWorld BASIC Interpeter for the 2650
+// MicroWorld BASIC Interpreter for the 2650
 // Written by Ian Binnie.
 // Copyright MicroWorld, 1979
 // Binary downloaded from Jim's repo

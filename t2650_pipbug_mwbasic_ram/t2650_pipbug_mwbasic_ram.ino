@@ -637,7 +637,7 @@ void setup()
   Serial.println("> downloaded from Craig Southeren's 18up5 repo");
   Serial.println("> https://bitbucket.org/postincrement/18up5-2650-remake/src/master/");
   Serial.println(">");
-  Serial.println("> MicroWorld BASIC Interpeter for the 2650");
+  Serial.println("> MicroWorld BASIC Interpreter for the 2650");
   Serial.println("> Written by Ian Binnie.");
   Serial.println("> Copyright MicroWorld, 1979");
   Serial.println("> Binary downloaded from Jim's repo");
