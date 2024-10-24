@@ -1,0 +1,1153 @@
+VACS 2650 Cross Assembler V1.24j/w32                                           Page 1
+
+0000              ; //=======================================================
+0000              ; //> HEYBUG Firmware for the Signetics 2650
+0000              ; //>
+0000              ; //> PIPBUG Source code written by Signetics taken from
+0000              ; //> Signetics 2650 microprocessor application memo SS50
+0000              ; //
+0000              ; //> Uses some code transcription of the original 
+0000              ; //> SS50 listing from Jim's repo
+0000              ; //> https://github.com/jim11662418/Signetics-2650-SBC
+0000              ; //>
+0000              ; //> and code from;
+0000              ; //>
+0000              ; //> HYBUG
+0000              ; //> : written by Brian L Young in 1979
+0000              ; //> 
+0000              ; //> Published article by Amateur Radio Action
+0000              ; //> Volume 2 No. 13, Australia. 1979"
+0000              ; //>
+0000              ; //> Hybug BIOS as incorporated into Winarcadia 33.3
+0000              ; //> by James Jacobs from
+0000              ; //> http://amigan.1emu.net/releases/
+0000              ; //=======================================================
+0000              ;
+0000              ; PIPBUG has been modified as follows:
+0000              ;  - the serial i/o delays modified by AdamT117
+0000              ;    (kayto@github)to get the timing working 
+0000              ;    for Teensy 3.6 Retroshield
+0000              ; 
+0000              ; compile with VACS
+0000              ;
+0000              ; memory map:
+0000              ;   0000-03FF   PIPBUG in ROM
+0000              ;   0400-043F   PIPBUG scratch pad RAM
+0000              ;   
+0000              
+0000              ;2650 specific equates
+0000 = 00000000   EQ          equ  0
+0000 = 00000001   GT          equ  1
+0000 = 00000002   LT          equ  2
+0000 = 00000003   UN          equ  3            
+0000              
+0000 = 00000080   sense       equ $80                     ;sense bit in program status, upper
+0000 = 00000040   flag        equ $40                     ;flag bit in program status, upper
+0000 = 00000020   ii          equ $20                     ;interrupt inhibit bit in program status, upper
+0000 = 00000010   rs          equ $10                     ;register select bit in program status, lower
+0000 = 00000008   wc          equ $08                     ;with/without carry bit in program status,lower
+0000              
+0000 = 00000020   spac        equ $20                     ;ASCII space
+0000 = 0000007F   dele        equ $7F                     ;ASCII delete
+0000 = 0000000D   CR          equ $0D                     ;ASCII carriage return
+0000 = 0000000A   LF          equ $0A                     ;ASCII line feed
+0000 = 0000003A   star        equ ':'
+0000 = 00000001   bmax        equ 1                       ;maximum number of breakpoints
+0000 = 00000014   blen        equ 20                      ;size of input buffer
+0000              
+0000              
+0000 = 00003C43   X3C43           equ     $3C43
+0000              
+0000              
+0000                          org $0000
+0000                          
+0000 073F         init:       lodi,R3 63
+0002 20                       eorz    R0
+0003 CF4400       aini:       stra,R0 com,R3,-
+0006 5B7B                     brnr,R3 aini                ;clear memory $0400-$04FF
+0008 0477                     lodi,R0 $077                ;opcode for 'ppsl'
+000A CC0409                   stra,R0 xgot
+000D 041B                     lodi,R0 $1B                 ;opcode for 'bctr,un'
+000F CC040B                   stra,R0 xgot+2
+0012 0480                     lodi,R0 $80
+0014 CC040C                   stra,R0 xgot+3
+0017 1B09                     bctr,un mbug              ;do an absolute branch to 'start' function in page 3
+0019              
+0019 0160         vec:        db hi(bk01),lo(bk01)
+001B 016E                     db hi(bk02),lo(bk02)
+001D              
+001D              ;====================================================================
+001D              ;command handler
+001D              ;====================================================================
+001D 043F         ebug:       lodi,R0 '?'
+001F 3F02B4                   bsta,UN cout
+0022 75FF         mbug:       cpsl    $FF
+0024 3F008A                   bsta,UN crlf
+0027 043E                     lodi,R0 '>'
+0029 3F02B4                   bsta,UN cout
+002C 3B2D                     bstr,UN line
+002E 20                       eorz    R0
+002F CC0427                   stra,R0 bptr
+0032 0C0413                   loda,R0 buff
+0035 E441                     comi,R0 'A'         ; Alter Memory
+0037 1C00AB                   bcta,EQ alte
+003A E442                     comi,R0 'B'
+003C 1C01E5                   bcta,EQ bkpt        ; set breakpoints
+003F E443                     comi,R0 'C'
+0041 1C01CA                   bcta,EQ clr
+0044 E444                     comi,R0 'D'         ; dump to tape
+0046 1C0310                   bcta,EQ dump            
+0049 E447                     comi,R0 'G'         ; goto code
+004B 1C013A                   bcta,EQ goto
+004E E44C                     comi,R0 'L'         ;load code from tape
+0050 1C03B5                   bcta,EQ load
+0053 E453                     comi,R0 'S'         ;set and alter registers
+0055 1C00F4                   bcta,EQ sreg
+0058 1F3000                   bcta,UN mbug1       ;out of space so fit extended menu somewhere else               
+005B                          
+005B              ;        ; PIPBUG users expect the 'line' function to be located at $005B
+005B              ;        if $ > $005B
+005B              ;            WARNING 'Address MUST be $005A'
+005B              ;        else                    
+005B              ;            ds $005B-$,0               
+005B              ;        endif
+005B              
+005B              ;====================================================================
+005B              ;input a cmd line into buffer
+005B              ;code is 1=CR 2=LF 3=MSG+CR 4=MSG+LF
+005B              ;====================================================================
+005B 07FF         line:       lodi,R3 $FF
+005D CF0427                   stra,R3 bptr
+0060 E714         llin:       comi,R3 blen
+0062 1819                     bctr,EQ elin
+0064 3F0284                   bsta,UN chin
+0067 E47F                     comi,R0 dele
+0069 980E                     bcfr,EQ alin
+006B E7FF                     comi,R3 $FF
+006D 1871                     bctr,EQ llin
+006F 0F6413                   loda,R0 buff,R3
+0072 3F02B4                   bsta,UN cout
+0075 A701                     subi,R3 1
+0077 1B67                     bctr,UN llin
+0079                          
+0079 E40D         alin:       comi,R0 CR
+007B 9818                     bcfr,EQ blin
+007D 0501         elin:       lodi,R1 1
+007F 03           clin:       lodz    R3
+0080 1A02                     bctr,LT dlin
+0082 8502                     addi,R1 2
+0084 CD042B       dlin:       stra,R1 code
+0087 CF0429                   stra,R3 cnt
+008A 040D         crlf:       lodi,R0 CR
+008C 3F02B4                   bsta,UN cout
+008F 040A                     lodi,R0 LF
+0091 3F02B4                   bsta,UN cout
+0094 17                       retc,UN
+0095                          
+0095 0502         blin:       lodi,R1 2
+0097 E40A                     comi,R0 LF
+0099 1864                     bctr,EQ clin
+009B CF2413                   stra,R0 buff,R3,+
+009E 3F02B4                   bsta,UN cout
+00A1 1F0060                   bcta,UN llin
+00A4              
+00A4              ;====================================================================
+00A4              ;store two bytes in R1 and R2 into temp and temp+1
+00A4              ;====================================================================
+00A4 CD040D       strt:       stra,R1 temp
+00A7 CE040E                   stra,R2 temp+1
+00AA 17                       retc,UN
+00AB              
+00AB              ;====================================================================
+00AB              ; display and alter memory
+00AB              ;====================================================================            
+00AB 3F02DB       alte:       bsta,UN gnum
+00AE 3B74         lalt:       bstr,UN strt
+00B0 3F0269                   bsta,UN bout
+00B3 0D040E                   loda,R1 temp+1
+00B6 3F0269                   bsta,UN bout
+00B9 3F035B                   bsta,UN form
+00BC 0D840D                   loda,R1 *temp
+00BF 3F0269                   bsta,UN bout
+00C2 3F035B                   bsta,UN form
+00C5 3F005B                   bsta,UN line
+00C8 0C042B                   loda,R0 code
+00CB E402                     comi,R0 2
+00CD 1E0022                   bcta,LT mbug
+00D0 1811                     bctr,EQ dalt
+00D2 CC0411       calt:       stra,R0 temr
+00D5 3F02DB                   bsta,UN gnum
+00D8 CE840D                   stra,R2 *temp
+00DB 0C0411                   loda,R0 temr
+00DE E404                     comi,R0 4
+00E0 9C0022                   bcfa,EQ mbug
+00E3 0601         dalt:       lodi,R2 1
+00E5 8E040E                   adda,R2 temp+1
+00E8 0500                     lodi,R1 0
+00EA 7708                     ppsl    wc
+00EC 8D040D                   adda,R1 temp
+00EF 7508                     cpsl    wc
+00F1 1F00AE                   bcta,UN lalt
+00F4              
+00F4              ;====================================================================
+00F4              ; selectively display and alter register
+00F4              ;====================================================================
+00F4 3F02DB       sreg:       bsta,UN gnum
+00F7 E608         lsre:       comi,R2 8
+00F9 1D001D                   bcta,GT ebug
+00FC CE0411                   stra,R2 temr
+00FF 0E6400                   loda,R0 com,R2
+0102 C1                       strz    R1
+0103 3F0269                   bsta,UN bout
+0106 3F035B                   bsta,UN form
+0109 3F005B                   bsta,UN line
+010C 0C042B                   loda,R0 code
+010F E402                     comi,R0 2
+0111 1E0022                   bcta,LT mbug
+0114 181C                     bctr,EQ csre
+0116 CC040F       asre:       stra,R0 temq
+0119 3F02DB                   bsta,UN gnum
+011C 02                       lodz    R2
+011D 0E0411                   loda,R2 temr
+0120 CE6400                   stra,R0 com,R2
+0123 E608                     comi,R2 8
+0125 9803                     bcfr,EQ bsre
+0127 CC040A                   stra,R0 xgot+1
+012A 0C040F       bsre:       loda,R0 temq
+012D E403                     comi,R0 3
+012F 1C0022                   bcta,EQ mbug
+0132 0E0411       csre:       loda,R2 temr
+0135 8601                     addi,R2 1
+0137 1F00F7                   bcta,UN lsre
+013A              
+013A              ;====================================================================
+013A              ; goto address
+013A              ;====================================================================
+013A 3F02DB       goto:       bsta,UN gnum                ;get the address
+013D 3F00A4                   bsta,UN strt                ;save the address in temp and temp+1   
+0140 0C0407                   loda,R0 com+7
+0143 92                       lpsu                        ;restore program status, upper
+0144 0D0401                   loda,R1 com+1               ;restore R1 in register bank 0
+0147 0E0402                   loda,R2 com+2               ;restore R2 in register bank 0
+014A 0F0403                   loda,R3 com+3               ;restore R3 in register bank 0
+014D 7710                     ppsl    rs
+014F 0D0404                   loda,R1 com+4               ;restore R1 in register bank 1
+0152 0E0405                   loda,R2 com+5               ;restore R2 in register bank 1
+0155 0F0406                   loda,R3 com+6               ;restore R3 in register bank 1
+0158 0C0400                   loda,R0 com                 ;restore R0
+015B 75FF                     cpsl    $FF                 ;clear program status, lower
+015D 1F0409                   bcta,UN xgot                ;branch to the address in 'xgot' which branches to the address in temp and temp+1
+0160              
+0160              ;====================================================================
+0160              ; breakpoint runtime code
+0160              ;====================================================================
+0160 CC0400       bk01:       stra,R0 com
+0163 13                       spsl
+0164 CC0408                   stra,R0 com+8
+0167 CC040A                   stra,R0 xgot+1
+016A 0400                     lodi,R0 0
+016C 1B0C                     bctr,UN bken
+016E CC0400       bk02:       stra,R0 com
+0171 13                       spsl
+0172 CC0408                   stra,R0 com+8
+0175 CC040A                   stra,R0 xgot+1
+0178 0401                     lodi,R0 1
+017A CC0411       bken:       stra,R0 temr
+017D 12                       spsu
+017E CC0407                   stra,R0 com+7
+0181 7710                     ppsl    rs
+0183 CD0404                   stra,R1 com+4
+0186 CE0405                   stra,R2 com+5
+0189 CF0406                   stra,R3 com+6
+018C 7510                     cpsl    rs
+018E CD0401                   stra,R1 com+1
+0191 CE0402                   stra,R2 com+2
+0194 CF0403                   stra,R3 com+3
+0197 0E0411                   loda,R2 temr
+019A 3B0F                     bstr,UN clbk
+019C 0D040D                   loda,R1 temp
+019F 3F0269                   bsta,UN bout
+01A2 0D040E                   loda,R1 temp+1
+01A5 3F0269                   bsta,UN bout
+01A8 1F0022                   bcta,UN mbug
+01AB              
+01AB              ;====================================================================
+01AB              ; clear a breakpoint
+01AB              ;====================================================================
+01AB 20           clbk:       eorz    R0
+01AC CE642C                   stra,R0 mark,R2
+01AF 0E6432                   loda,R0 hadr,R2
+01B2 CC040D                   stra,R0 temp
+01B5 0E6434                   loda,R0 ladr,R2
+01B8 CC040E                   stra,R0 temp+1
+01BB 0E642E                   loda,R0 hdat,R2
+01BE CC840D                   stra,R0 *temp
+01C1 0E6430                   loda,R0 ldat,R2
+01C4 0701                     lodi,R3 1
+01C6 CFE40D                   stra,R0 *temp,R3
+01C9 17                       retc,UN
+01CA              
+01CA              ;break point mark indicates if set
+01CA              ;hadr+ladr is breakpoint address hdat+ldat is two byte
+01CA 3B0B         clr:        bstr,UN nok
+01CC 0E642C                   loda,R0 mark,R2
+01CF 1C001D                   bcta,EQ ebug
+01D2 3B57                     bstr,UN clbk
+01D4 1F0022                   bcta,UN mbug
+01D7                          
+01D7 3F02DB       nok:        bsta,UN gnum
+01DA A601                     subi,R2 1
+01DC 1E0250                   bcta,LT abrt
+01DF E601                     comi,R2 bmax
+01E1 1D0250                   bcta,GT abrt
+01E4 17                       retc,UN
+01E5              
+01E5 3B70         bkpt:       bstr,UN nok
+01E7 0E642C                   loda,R0 mark,R2
+01EA BC01AB                   bsfa,EQ clbk
+01ED CE0411                   stra,R2 temr
+01F0 3F02DB                   bsta,UN gnum
+01F3 3F00A4                   bsta,UN strt
+01F6 0F0411                   loda,R3 temr
+01F9 02                       lodz    R2
+01FA CF6434                   stra,R0 ladr,R3
+01FD 01                       lodz    R1
+01FE CF6432                   stra,R0 hadr,R3
+0201 0C840D                   loda,R0 *temp
+0204 CF642E                   stra,R0 hdat,R3
+0207 059B                     lodi,R1 $9B
+0209 CD840D                   stra,R1 *temp
+020C 0601                     lodi,R2 1
+020E 0EE40D                   loda,R0 *temp,R2
+0211 CF6430                   stra,R0 ldat,R3
+0214 0F6222                   loda,R0 disp,R3
+0217 CEE40D                   stra,R0 *temp,R2
+021A 04FF                     lodi,R0 $FF
+021C CF642C                   stra,R0 mark,R3
+021F 1F0022                   bcta,UN mbug
+0222              
+0222 99           disp:       db  vec+$80
+0223 9B                       db  vec+$80+2
+0224              
+0224              ;        ; PIPBUG users expect the 'bin' function to be located at $0224
+0224              ;        if $ > $0224
+0224              ;            WARNING 'Address MUST be $0224'
+0224              ;        else
+0224              ;            ds $0224-$,0                
+0224              ;        endif
+0224                          
+0224              ;====================================================================
+0224              ; input two hex characters and form a byte in R1
+0224              ;====================================================================
+0224 3F0284       bin:        bsta,UN chin
+0227 3B1D                     bstr,UN lkup
+0229 D3                       rrl,R3
+022A D3                       rrl,R3
+022B D3                       rrl,R3
+022C D3                       rrl,R3
+022D CF0412                   stra,R3 tems
+0230 3F0284                   bsta,UN chin
+0233 3B11                     bstr,UN lkup
+0235 6F0412                   iora,R3 tems
+0238 03                       lodz    R3
+0239 C1                       strz    R1
+023A 3B01                     bstr,UN cbcc       
+023C 17                       retc,UN
+023D              ;====================================================================           
+023D              ; calculate the BCC, EOR and then rotate left
+023D              ;====================================================================
+023D              ; removed to make some space for mbug1
+023D 01           cbcc:       lodz    R1         
+023E 2C042A                   eora,R0 bcc         
+0241 D0                       rrl,R0             
+0242 CC042A                   stra,R0 bcc        
+0245 17                       retc,UN            
+0246              
+0246              ;        ; PIPBUG users expect the 'lkup' function to be located at $0246
+0246              ;        if $ > $0246
+0246              ;            WARNING 'Address MUST be $0246'
+0246              ;        else
+0246              ;            ds $0246-$,0                
+0246              ;        endif
+0246                          
+0246              ;lookup ASCII char in hex value table
+0246 0710         lkup:       lodi,R3 16
+0248 EF4259       alku        coma,R0 ansi,R3,-
+024B 14                       retc,EQ
+024C E701                     comi,R3 1
+024E 9A78                     bcfr,LT alku
+0250              
+0250              ;abort exit from any level of subroutine
+0250              ;use ras ptr since possible bkpt prog using it
+0250 0C0407       abrt:       loda,R0 com+7
+0253 6440                     iori,R0 $40
+0255 12                       spsu
+0256 1F001D                   bcta,UN ebug
+0259                          
+0259 303132333435 ansi:       db  "0123456789ABCDEF"
+0269              
+0269                      ; PIPBUG users expect the 'bout' function to be located at $0269
+0269                          ds $0269-$,0                
+0269                          
+0269              ;====================================================================
+0269              ; output byte in R1 as 2 hex characters
+0269              ;====================================================================
+0269 CD0412       bout:       stra,R1 tems
+026C                          ;bstr,un cbcc
+026C 51                       rrr,R1
+026D 51                       rrr,R1
+026E 51                       rrr,R1
+026F 51                       rrr,R1
+0270 450F                     andi,R1 $0F
+0272 0D6259                   loda,R0 ansi,R1
+0275 3F02B4                   bsta,UN cout
+0278 0D0412                   loda,R1 tems
+027B 450F                     andi,R1 $0F
+027D 0D6259                   loda,R0 ansi,R1
+0280 3F02B4                   bsta,UN cout
+0283 17                       retc,UN
+0284                          
+0284              ;        ; PIPBUG users expect the 'chin' function to be located at $0286
+0284              ;        if $ > $0286
+0284              ;            WARNING 'Address MUST be $0286'
+0284              ;        else
+0284              ;            ds $0286-$,0                
+0284              ;        endif
+0284              ;====================================================================
+0284              ; pipbug serial input function
+0284              ;====================================================================
+0284 7710         chin:       ppsl    rs                  ;select register bank 1
+0286 0480                     lodi,R0 $80
+0288 B0                       wrtc,R0
+0289 0500                     lodi,R1 0                   ;initialize R1
+028B 0608                     lodi,R2 8                   ;load R2 with the number of bits to receive
+028D 12           achi:       spsu                        ;store program status, upper containing the sense input to R0
+028E 1A74                     bctr,LT chin                ;branch back if the sense input is "1" (wait for the start bit)
+0290 20                       eorz    R0               
+0291 B0                       wrtc,R0
+0292 3B19                     bstr,UN dly                ;delay 1/2 bit time
+0294 3B10         bchi:       bstr,un     dlay
+0296 12                       spsu
+0297 4480                     andi,r0 $80
+0299 51                       rrr,r1
+029A 61                       iorz        r1
+029B C1                       strz        r1
+029C FA76                     bdrr,r2     bchi
+029E 3B06                     bstr,un     dlay
+02A0 457F                     andi,r1     $7F
+02A2 01                       lodz        r1
+02A3 7518                     cpsl        rs+wc
+02A5 17                       retc,un
+02A6              ;********************************************************************
+02A6              ; adjusted delays for Teensy3.6 Retroshield
+02A6              ;********************************************************************
+02A6 20           dlay:       eorz    r0
+02A7 0420                     lodi,r0 $20    ;set r0 to bit delay
+02A9 F87E                     bdrr,r0 $
+02AB C0                       nop
+02AC C0                       nop  
+02AD 0405         dly:        lodi,R0 $05
+02AF F87E                     bdrr,R0 $
+02B1 17                       retc,UN
+02B2              ;********************************************************************
+02B2              ; original PIPBUG delays - 
+02B2              ;********************************************************************
+02B2              ; dlay:
+02B2                              ; eorz  r0
+02B2                              ; nop
+02B2                              ; nop
+02B2                              ; nop
+02B2                              ; nop
+02B2              ; dly:
+02B2                              ; bdrr,r0       dly
+02B2                              ; lodi,r0       $60
+02B2              ; L02B1:
+02B2                              ; bdrr,r0       L02B1
+02B2                              ; retc,un
+02B2              ;********************************************************************
+02B2              ;        ; PIPBUG users expect the 'cout' function to be located at $02B4
+02B2 0000                     ds $02B4-$,0                
+02B4                          
+02B4              ;====================================================================
+02B4              ; pipbug serial output function
+02B4              ;====================================================================
+02B4 7710         cout:       ppsl    rs                  ;select register bank 1
+02B6 7640                     ppsu    flag                ;set FLAG output to "1" (send MARK)
+02B8 C2                       strz    R2                  ;save the character (now in R0) in R2
+02B9 0508                     lodi,R1 8                   ;load R1 with the number of bits to send
+02BB 3B69                     bstr,UN dlay                ;timing adjustments
+02BD 3B67                     bstr,UN dlay
+02BF 7440                     cpsu    flag                ;clear the FLAG output (send start bit)           
+02C1 3B63         acdu:       bstr,UN dlay                ;delay one bit time
+02C3 52                       rrr,R2                      ;rotate the next bit of R2 into bit 7  
+02C4 1A04                     bctr,LT one                 ;branch if bit 7 was "1"
+02C6 7440                     cpsu    flag                ;else, send "0" (SPACE)
+02C8 1B02                     bctr,UN zero
+02CA 7640         one:        ppsu    flag                ;send "1" (MARK)
+02CC F973         zero:       bdrr,R1 acdu                ;loop until all 8 bits are sent
+02CE 3B56                     bstr,UN dlay
+02D0 7640                     ppsu    flag                ;preset the FLAG output (send stop bit)         
+02D2 7510                     cpsl    rs                  ;select register bank 0
+02D4 17                       retc,UN    
+02D5                       
+02D5              ;get a number from the buffer into R1-R2
+02D5 0C042B       dnum:       loda,R0 code
+02D8 1807                     bctr,EQ lnum
+02DA 17                       retc,UN
+02DB              
+02DB 20           gnum:       eorz    R0
+02DC C1                       strz    R1
+02DD C2                       strz    R2
+02DE CC042B                   stra,R0 code
+02E1 0F0427       lnum:       loda,R3 bptr
+02E4 EF0429                   coma,R3 cnt
+02E7 14                       retc,EQ
+02E8 0F2413                   loda,R0 buff,R3,+
+02EB CF0427                   stra,R3 bptr
+02EE E420                     comi,R0 spac
+02F0 1863                     bctr,EQ dnum
+02F2 3F0246       bnum:       bsta,UN lkup
+02F5 040F         cnum:       lodi,R0 $0F
+02F7 D2                       rrl,R2
+02F8 D2                       rrl,R2
+02F9 D2                       rrl,R2
+02FA D2                       rrl,R2
+02FB 42                       andz    R2
+02FC D1                       rrl,R1
+02FD D1                       rrl,R1
+02FE D1                       rrl,R1
+02FF D1                       rrl,R1
+0300 45F0                     andi,R1 $F0
+0302 46F0                     andi,R2 $F0
+0304 61                       iorz    R1
+0305 C1                       strz    R1
+0306 03                       lodz    R3
+0307 62                       iorz    R2
+0308 C2                       strz    R2
+0309 0401                     lodi,R0 1
+030B CC042B                   stra,R0 code
+030E 1B51                     bctr,UN lnum
+0310              
+0310 3B49         dump:       bstr,un     gnum
+0312 3F00A4                   bsta,un     strt
+0315 3B44                     bstr,un     gnum
+0317 8601                     addi,r2     $01
+0319 7708                     ppsl        wc
+031B 8500                     addi,r1     $00
+031D 7508                     cpsl        wc
+031F CD040F                   stra,r1     temq
+0322 CE0410                   stra,r2     temq+1
+0325 3B38         fdum:       bstr,un     gap
+0327 04FF                     lodi,r0     $FF
+0329 CC0429                   stra,r0     cnt
+032C 3F008A                   bsta,un     crlf
+032F 043A                     lodi,r0     star
+0331 3F02B4                   bsta,un     cout
+0334 20                       eorz        r0
+0335 CC042A                   stra,r0     bcc
+0338 0D040F                   loda,r1     temq
+033B 0E0410                   loda,r2     temq+1
+033E AE040E                   suba,r2     temp+1
+0341 7708                     ppsl        wc
+0343 AD040D                   suba,r1     temp
+0346 7508                     cpsl        wc
+0348 1E001D                   bcta,LT     ebug
+034B 191C                     bctr,gt     adum
+034D 5A1C                     brnr,r2     bdum
+034F 0704                     lodi,r3     $04
+0351 3F0269       cdum:       bsta,un     bout
+0354 FB7B                     bdrr,r3     cdum
+0356 3B07                     bstr,un     gap
+0358 1F0022                   bcta,un     mbug
+035B              ;
+035B 0703         form:       lodi,r3     $03
+035D 1B02                     bctr,un     agap
+035F              ;
+035F 0732         gap:        lodi,r3     $32
+0361 0420         agap:       lodi,r0     spac
+0363 3F02B4                   bsta,un     cout
+0366 FB79                     bdrr,r3     agap
+0368 17                       retc,un
+0369              ;
+0369 06FF         adum:       lodi,r2     $FF
+036B CE0428       bdum:       stra,r2     mcnt
+036E 0D040D                   loda,r1     temp
+0371 3F0269                   bsta,un     bout
+0374 0D040E                   loda,r1     temp+1
+0377 3F0269                   bsta,un     bout
+037A 0D0428                   loda,r1     mcnt
+037D 3F0269                   bsta,un     bout
+0380 0D042A                   loda,r1     bcc
+0383 3F0269                   bsta,un     bout
+0386 0F0429       ddum:       loda,r3     cnt
+0389 0FA40D                   loda,r0     *temp,r3,+
+038C EF0428                   coma,r3     mcnt
+038F 1809                     bctr,eq     edum
+0391 CF0429                   stra,r3     cnt
+0394 C1                       strz        r1
+0395 3F0269                   bsta,un     bout
+0398 1B6C                     bctr,un     ddum
+039A              ;
+039A 0D042A       edum:       loda,r1     bcc
+039D 3F0269                   bsta,un     bout
+03A0 0E040E                   loda,r2     temp+1
+03A3 8E0428                   adda,r2     mcnt
+03A6 0500                     lodi,r1     $00
+03A8 7708                     ppsl        wc
+03AA 8D040D                   adda,r1     temp
+03AD 7508                     cpsl        wc
+03AF 3F00A4                   bsta,un     strt
+03B2 1F0325                   bcta,un     fdum
+03B5              ;
+03B5 3F0284       load:      bsta,un      chin
+03B8 E43A                     comi,r0     star
+03BA 9879                     bcfr,eq     load
+03BC 20                       eorz        r0
+03BD CC042A                   stra,r0     bcc
+03C0 3F0224                   bsta,un     bin
+03C3 CD040D                   stra,r1     temp
+03C6 3F0224                   bsta,un     bin
+03C9 CD040E                   stra,r1     temp+1
+03CC 3F0224                   bsta,un     bin
+03CF 5903                     brnr,r1     aloa
+03D1 1F840D                   bcta,un     *temp                                           ;INFO: indirect jump
+03D4                      ;
+03D4 CD0428       aloa:       stra,r1     mcnt
+03D7 3F0224                   bsta,un     bin
+03DA 0C042A                   loda,r0     bcc
+03DD 9C001D                   bcfa,eq     ebug
+03E0 C3                       strz        r3
+03E1 CF0429       bloa:       stra,r3     cnt
+03E4 3F0224                   bsta,un     bin
+03E7 0F0429                   loda,r3     cnt
+03EA EF0428                   coma,r3     mcnt
+03ED 1806                     bctr,eq     cloa
+03EF 01                       lodz        r1
+03F0 CFE40D                   stra,r0     *temp,r3
+03F3 DB6C                     birr,r3     bloa
+03F5              cloa:
+03F5 0C042A                   loda,r0     bcc
+03F8 9C001D                   bcfa,eq     ebug
+03FB 1F03B5                   bcta,un     load           
+03FE              
+03FE 0000                     db  $00,$00
+0400              
+0400              ;==================================================================== 
+0400              ; The High (HY) ROM and Extended (E) function section
+0400              ; HY+E = HEY?
+0400              ;==================================================================== 
+0400 000000000000             ds  $3000-$,0               ;fill empty space with zeros
+3000                          org $3000               
+3000              ;==================================================================== 
+3000              ; ran out of space in the command handler function 'mbug', continue here
+3000              ; display 'help' when '?' is entered 
+3000               ;====================================================================           
+3000 E43F          mbug1:     comi,R0 '?'
+3002 1C3012                   bcta,EQ help
+3005              ;add extras here
+3005 E448                     COMI,r0 'H'                                     
+3007 1C3C50                   BCTA,eq hexlist   
+300A E446                     COMI,r0 'F'                                     
+300C 1C3C6A                   BCTA,eq search
+300F                          ; COMI,r0 'E'                                     
+300F                          ; BCTA,eq find
+300F                          ; COMI,r0 'M'                                     
+300F                          ; BCTA,eq move
+300F              
+300F              
+300F              
+300F              
+300F              
+300F 1F001D                   bcta,UN ebug 
+3012              ;====================================================================
+3012              ; help displayed when '?' is entered at the PIPBUG prompt
+3012              ;====================================================================
+3012              ; really inefficient code - welcoming a fix
+3012 3F008A       help:       bsta,UN crlf                ;start on a new line
+3015 07FF                     lodi,R3 $FF                 ;256 R3 is pre-incremented in the instruction below
+3017 0F3033       help1:      loda,R0 helptxt,R3,+        ;load the character into R0 from the text below indexed by R3
+301A E400                     comi,R0 $00                 ;is it zero? (end of string)
+301C 1C3024                   bcta,EQ help2                ;branch back to pipbug when done
+301F 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
+3022 1B73                     bctr,UN help1               ;loop back for the next character in the string
+3024 07FF         help2:      lodi,R3 $FF     
+3026 0F30F4       help3:      loda,R0 helptxt1,R3,+        ;load the character into R0 from the text below indexed by R3
+3029 E400                     comi,R0 $00                 ;is it zero? (end of string)
+302B 1C0022                   bcta,EQ mbug                ;branch back to pipbug when done
+302E 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
+3031 1B73                     bctr,UN help3              
+3033 504950425547 helptxt:    db "PIPBUG Commands:",CR,LF,LF              ;16
+3046 416C74657220             db "Alter Memory aaaa  Aaaaa<CR>",CR,LF     ;28
+3064 536574204272             db "Set Breakpoint n   Bn aaaa<CR>",CR,LF   ;30
+3084 436C65617220             db "Clear Breakpoint n Cn<CR>",CR,LF        ;25
+309F 476F746F2041             db "Goto Address aaaa  Gaaaa<CR>",CR,LF     ;28         
+30BD 4C6F61642048             db "Load Hex File      L<CR>",CR,LF         ;24
+30D7 536565205265             db "See Register Rn    Sn<CR>",CR,LF,LF,$00     ;25     =156
+30F4                          
+30F4 5574696C6974 helptxt1:   db "Utility Routines:",CR,LF,LF
+3108 46696E642048             db "Find Hex String    Faaaa bbbb xxyy<CR>",CR,LF
+3130 46696E642048             db "Find H(E)x         Eaaaa bbbb xx<CR>",CR,LF
+3156 486578204C69             db "Hex List           Haaaa bbbb<CR>",CR,LF   
+3179 4D204D6F7665             db "M Move             Maaaa bbbb cccc<CR>",CR,LF,$00
+31A2              ;Official Utility EPROM Label Equates-------------------------------------
+31A2              ;GPAR            equ $3C07        ;(R/w) EPROM subroutine
+31A2              ;INCRT           equ $3C2A        ;(R/w) EPROM subroutine
+31A2              ;PADR            equ $3C3C        ;(R/w) EPROM subroutine
+31A2              ;HEXLIST         equ $3C50        ;(R/w) EPROM subroutine
+31A2              ;SEARCH          equ $3C6A        ;(R/w) EPROM subroutine
+31A2              ;HEXIN           equ $3C8A        ;(R/w) EPROM subroutine
+31A2              ;VERIFY          equ $3CDD        ;(R/w) EPROM subroutine
+31A2              ;OK              equ $3CF8        ;(R/w) EPROM code section
+31A2              ;FAULTY          equ $3D0E        ;(R/w) EPROM code section
+31A2              ;MOVE            equ $3D3B        ;(R/w) EPROM subroutine
+31A2              ;Z3OUT           equ $3DBE        ;(R/w) EPROM subroutine (300 baud)
+31A2              ;Z3IN            equ $3DE4        ;(R/w) EPROM subroutine (300 baud)
+31A2              ;ZDUMP           equ $3E02        ;(R/w) EPROM subroutine (300 baud)
+31A2              ;ZLOAD           equ $3E53        ;(R/w) EPROM subroutine (300 baud)
+31A2              ;ZVERIFY         equ $3EA2        ;(R/w) EPROM subroutine (300 baud)
+31A2              
+31A2 000000000000             ds  $3C00-$,0               ;fill empty space with zeros
+3C00                          org $3C00         
+3C00              L3C00: ;$3C00
+3C00 CD0FFA                   stra,r1     X2FFA
+3C03 CE0FFB                   stra,r2     X2FFA+1
+3C06 17                       retc,un
+3C07              
+3C07              
+3C07              gpar: ;$3C07
+3C07 7640                     PPSU    flag                                        ;  9,2 $3C07 76 40    PSU |= $40 & %01100111;
+3C09                  ;Set Flag (F) bit
+3C09 7702                     PPSL    $02                                      ;  9,2 $3C09 77 02    PSL |= 2;
+3C0B                  ;Set Compare (COM) bit (now unsigned/logical)
+3C0B 7518                     CPSL    RS+wc                                    ;  9,2 $3C0B 75 18    PSL &= ~($18);
+3C0D                  ;Clear Register Select (RS) bit (now Register 1..Register 3)
+3C0D                  ;Clear With Carry (wc) bit
+3C0D 3F02DB                   BSTA,un gnum                                    ;  9,3 $3C0D 3F 02 DB gosub L02DB;
+3C10 3B6E                     BSTR,un L3C00                                    ;  9,2 $3C10 3B 6E    gosub L3C00;
+3C12 3BFA                     BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C12 3B FA    gosub *$3C0E [L02DB];
+3C14 3B0F                     BSTR,un L3C25                                    ;  9,2 $3C14 3B 0F    gosub L3C25;
+3C16 CD0FFC                   STRA,r1 X2FFC                                    ; 12,3 $3C16 CD 0F FC *($2FFC) = r1;
+3C19 CE0FFD                   STRA,r2 X2FFD                                   ; 12,3 $3C19 CE 0F FD *($2FFD) = r2;
+3C1C 3BF0                     BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C1C 3B F0    gosub *$3C0E [L02DB];
+3C1E CD0FFE                   STRA,r1 X2FFE                                   ; 12,3 $3C1E CD 0F FE *($2FFE) = r1;
+3C21 CE0FFF                   STRA,r2 X2FFF                                   ; 12,3 $3C21 CE 0F FF *($2FFF) = r2;
+3C24 17                       RETC,un                                          ;  9,1 $3C24 17       return;            
+3C25              
+3C25              L3C25:
+3C25 DA02                     birr,r2     L3C29
+3C27 D900                     birr,r1     L3C29
+3C29              L3C29:
+3C29 17                       retc,un
+3C2A              L3C2A:
+3C2A 0D0FFA                   loda,r1     X2FFA
+3C2D 0E0FFB                   loda,r2     X2FFB
+3C30 3B73                     bstr,un     L3C25
+3C32 3B4C                     bstr,un     L3C00
+3C34 ED0FFC                   coma,r1     X2FFC
+3C37 16                       retc,lt
+3C38 EE0FFD                   coma,r2     X2FFD
+3C3B 17                       retc,un
+3C3C              
+3C3C              L3C3C:
+3C3C 3F008A                   bsta,un     crlf
+3C3F 0D0FFA                   loda,r1     X2FFA
+3C42 3F0269                   bsta,un     bout                    ;$0269
+3C45 0D0FFB                   loda,r1     X2FFB
+3C48 3BF9                     bstr,un     *$3C43                                  ;$0269 ;INFO: indirect jump
+3C4A              L3C4A:
+3C4A 0420                     lodi,r0     $20
+3C4C 3F02B4                   bsta,un     cout                        ;$02B4
+3C4F 17                       retc,un
+3C50              ;====================================================================
+3C50              ; HEX list function - Haaaa bbbb
+3C50              ;====================================================================
+3C50              hexlist: ;$3C50
+3C50 3F3C07                   BSTA,un gpar                                    ;  9,3 $3C50 3F 3C 07 gosub L3C07;
+3C53              L3C53: ;$3C53
+3C53 3B67                     BSTR,un L3C3C                                    ;  9,2 $3C53 3B 67    gosub L3C3C;
+3C55              L3C55: ;$3C55
+3C55 0D8FFA                   LODA,r1 *X2FFA                                  ; 18,3 $3C55 0D 8F FA r1 = *(*$2FFA);
+3C58 3BE9                     BSTR,un *$3C43 ;[bout]                           ; 15,2 $3C58 3B E9    gosub *$3C43 [L0269];
+3C5A                  ;Warning: indirect branch!
+3C5A 3B6E                     BSTR,un L3C4A                                    ;  9,2 $3C5A 3B 6E    gosub L3C4A;
+3C5C 3B4C                     BSTR,un L3C2A                                    ;  9,2 $3C5C 3B 4C    gosub L3C2A;
+3C5E 9E0022                   BCFA,lt mbug                                    ;  9,3 $3C5E 9E 00 22 if CC != LT then goto L0022;
+3C61 0C0FFB                   LODA,r0 X2FFB                                    ; 12,3 $3C61 0C 0F FB r0 = *($2FFB);
+3C64 440F                     ANDI,r0 $0F                                       ;  6,2 $3C64 44 0F    r0 &= $F;
+3C66 986D                     BCFR,eq L3C55                                    ;  9,2 $3C66 98 6D    if CC != EQ then goto L3C55;
+3C68 1B69                     BCTR,un L3C53                                    ;  9,2 $3C68 1B 69    goto L3C53;
+3C6A              ;====================================================================
+3C6A              ; Find HEX string function - Faaaa bbbb xxyy
+3C6A              ;====================================================================    
+3C6A              search: ;$3C6A
+3C6A 3BE5                     BSTR,un *$3C51 ;[L3C07]                           ; 15,2 $3C6A 3B E5    gosub *$3C51 [L3C07];
+3C6C                  ;Warning: indirect branch!
+3C6C 3BCF                     BSTR,un *$3C3D ;[L008A]                           ; 15,2 $3C6C 3B CF    gosub *$3C3D [L008A];
+3C6E                  ;Warning: indirect branch!
+3C6E              L3C6E: ;$3C6E
+3C6E 0C8FFA                   LODA,r0 *X2FFA                                   ; 18,3 $3C6E 0C 8F FA r0 = *(*$2FFA);
+3C71 EC0FFE                   COMA,r0 X2FFE                                    ; 12,3 $3C71 EC 0F FE compare r0 against *($2FFE);
+3C74 980D                     BCFR,eq L3C83                                    ;  9,2 $3C74 98 0D    if CC != EQ then goto L3C83;
+3C76 0701                     LODI,r3 1                                        ;  6,2 $3C76 07 01    r3 = 1 [SOH];
+3C78 0FEFFA                   LODA,r0 *X2FFA,r3                                ; 18,3 $3C78 0F EF FA r0 = *(*$2FFA + r3);
+3C7B EC0FFF                   COMA,r0 X2FFF                                    ; 12,3 $3C7B EC 0F FF compare r0 against *($2FFF);
+3C7E 9803                     BCFR,eq L3C83                                    ;  9,2 $3C7E 98 03    if CC != EQ then goto L3C83;
+3C80 3F3C3C                   BSTA,un L3C3C                                    ;  9,3 $3C80 3F 3C 3C gosub L3C3C;
+3C83              L3C83: ;$3C83
+3C83 3F3C2A                   BSTA,un L3C2A                                    ;  9,3 $3C83 3F 3C 2A gosub L3C2A;
+3C86 9AD7                     BCFR,lt *$3C5F ;[mbug]                           ;6+9,2 $3C86 9A D7    if CC != LT then goto *$3C5F [L0022];
+3C88                  ;Warning: indirect branch!
+3C88 1B64                     BCTR,un L3C6E                                    ;  9,2 $3C88 1B 64    goto L3C6E; 
+3C8A              
+3C8A              ;Below work in progress
+3C8A                                      
+3C8A              ;====================================================================
+3C8A              ; Find HEX  function - Faaaa bbbb xx
+3C8A              ;====================================================================    
+3C8A              ; find: ;$1DA
+3C8A                          ; BSTA,un gnum                                    ;  9,3 $01DA 3F 02 DB gosub L02DB;
+3C8A                          ; BSTA,un strt                                    ;  9,3 $01DD 3F 00 A4 gosub L00A4;
+3C8A                          ; BSTR,un *$3C8B
+3C8A                          ; ;[gnum]15,2 $01E0 3B F9    gosub *$1DB [L02DB];
+3C8A                  ; ;Warning: indirect branch!
+3C8A                          ; STRA,r1 X2FD0                                  ; 12,3 $01E2 CD 04 00 *(X0400) = r1;
+3C8A                          ; STRA,r2 X2FD1                                    ; 12,3 $01E5 CE 04 01 *(X0401) = r2;
+3C8A                          ; BSTR,un *$3C8B
+3C8A                          ; ;[gnum]15,2 $01E8 3B F1    gosub *$1DB [L02DB];
+3C8A                  ; ;Warning: indirect branch!
+3C8A                          ; STRA,r2 X2FD2                                    ; 12,3 $01EA CE 04 02 *(X0402) = r2;
+3C8A              ; L01ED: ;$1ED
+3C8A                          ; BSTR,un L0201                                    ;  9,2 $01ED 3B 12    gosub L0201;
+3C8A                          ; COMR,r0 *$3C9B
+3C8A                          ; ;[com+2]15,2 $01EF E8 FA    compare r0 against *(*P01EB [X0402]);
+3C8A                          ; BCFR,eq L01ED                                    ;  9,2 $01F1 98 7A    if CC != EQ then goto L01ED;
+3C8A                          ; LODR,r1 *$3CB2
+3C8A                          ; ;[X040D] 15,2 $01F3 09 8D    r1 = *(*P0202 [X040D]);
+3C8A                          ; BSTA,un bout                                    ;  9,3 $01F5 3F 02 69 gosub L0269;
+3C8A                          ; LODR,r1 *$3CB5
+3C8A                          ; ;[temp+1]15,2 $01F8 09 8B    r1 = *(*P0205 [X040E]);
+3C8A                          ; BSTR,un *$3CA6
+3C8A                          ; ;[bout]  15,2 $01FA 3B FA    gosub *$1F6 [L0269];
+3C8A                  ; ;Warning: indirect branch!
+3C8A                          ; BSTA,un crlf                                    ;  9,3 $01FC 3F 00 8A gosub L008A;
+3C8A                          ; BCTR,un L01ED   
+3C8A              ; L0201:
+3C8A                          ; loda,r1   X2FDD
+3C8A                          ; loda,r2   X2FDE
+3C8A                          ; addi,r2   $01
+3C8A                          ; ppsl      wc
+3C8A                          ; addi,r1   $00
+3C8A                          ; cpsl      wc
+3C8A                          ; bstr,un   *$3c8e                                          ;INFO: indirect jump
+3C8A                          ; loda,r0   *X2FDD
+3C8A                          ; comr,r1   *$3C93
+3C8A                          ; bcfr,eq   L021C
+3C8A                          ; comr,r2   *$3C96
+3C8A                          ; bctr,eq   L021D
+3C8A              ; L021C:
+3C8A                          ; retc,un
+3C8A                      ; ;
+3C8A              ; L021D:
+3C8A                          ; eorz      r0
+3C8A              ; L021E:
+3C8A                          ; bdrr,r3   L021E
+3C8A                          ; bdrr,r0   L021E
+3C8A                          ; zbrr      mbug1
+3C8A                          ; L3D3B:
+3C8A                          ; bsta,un   L3C07
+3C8A                          ; coma,r1   X2FFA
+3C8A                          ; bctr,gt   *X3D47                                          ;INFO: indirect jump
+3C8A                          ; coma,r2   X2FFB
+3C8A                          ; bcta,gt   L3D84
+3C8A              ;====================================================================
+3C8A              ; Move  function - Faaaa bbbb xx
+3C8A              ;====================================================================    
+3C8A              ; L3D49:
+3C8A                          ; loda,r0   *X2FFA
+3C8A                          ; stra,r0   *X2FFE
+3C8A                          ; bsta,un   L3C2A
+3C8A                          ; bcfa,lt   L0022
+3C8A                          ; bstr,un   L3D5E
+3C8A                          ; bsta,un   L3C25
+3C8A                          ; bstr,un   L3D65
+3C8A                          ; bctr,un   L3D49
+3C8A                  ; ;
+3C8A              ; L3D5E:
+3C8A                          ; loda,r1   X2FFE
+3C8A                          ; loda,r2   X2FFF
+3C8A                          ; retc,un
+3C8A                  ; ;
+3C8A              ; L3D65:
+3C8A                          ; stra,r1   X2FFE
+3C8A                          ; stra,r2   X2FFF
+3C8A                          ; retc,un
+3C8A                  ; ;
+3C8A              ; L3D6C:
+3C8A                          ; loda,r1   X2FFC
+3C8A                          ; loda,r2   X2FFD
+3C8A                          ; bstr,un   L3D7B
+3C8A                          ; stra,r1   X2FFC
+3C8A                          ; stra,r2   X2FFD
+3C8A                          ; retc,un
+3C8A                  ; ;
+3C8A              ; L3D7B:
+3C8A                          ; bdrr,r2   L3D7D
+3C8A              ; L3D7D:
+3C8A                          ; comi,r2   H'FF'
+3C8A                          ; bcfr,eq   L3D83
+3C8A                          ; bdrr,r1   L3D83
+3C8A              ; L3D83:
+3C8A                          ; retc,un
+3C8A                  ; ;
+3C8A                  ; L3D84:
+3C8A                          ; bstr,un   L3D6C
+3C8A                          ; ppsl      H'09'
+3C8A                          ; bstr,un   L3D5E
+3C8A                          ; suba,r2   X2FFB
+3C8A                          ; suba,r1   X2FFA
+3C8A                          ; cpsl      H'01'
+3C8A                          ; adda,r2   X2FFD
+3C8A                          ; adda,r1   X2FFC
+3C8A                          ; bstr,un   L3D65
+3C8A                          ; cpsl      H'08'
+3C8A                          ; loda,r0   *X2FFC
+3C8A                          ; stra,r0   *X2FFE
+3C8A                  ; L3DA2:
+3C8A                          ; bsta,un   L3D5E
+3C8A                          ; bstr,un   L3D7B
+3C8A                          ; bsta,un   L3D65
+3C8A                          ; bstr,un   L3D6C
+3C8A                          ; loda,r0   *X2FFC
+3C8A                          ; stra,r0   *X2FFE
+3C8A                          ; coma,r1   X2FFA
+3C8A                          ; bctr,gt   L3DA2
+3C8A                          ; coma,r2   X2FFB
+3C8A                          ; bctr,gt   L3DA2
+3C8A                          ; zbrr      L0022
+3C8A              ;====================================================================
+3C8A              ; RAM definitions
+3C8A              ;====================================================================
+0400                          org $400
+0400              
+0400              com:        ds  1      ;400             ;R0 saved here
+0401                          ds  1      ;401             ;R1 in register bank 0 saved here
+0402                          ds  1      ;402             ;R2 in register bank 0 saved here
+0403                          ds  1      ;403             ;R3 in register bank 0 saved here
+0404                          ds  1      ;404             ;R1 in register bank 1 saved here
+0405                          ds  1      ;405             ;R2 in register bank 0 saved here
+0406                          ds  1      ;406             ;R3 in register bank 0 saved here
+0407                          ds  1      ;407             ;program status, upper saved here
+0408                          ds  1      ;408             ;program status, lower saved here
+0409              xgot:       ds  2      ;409 40A
+040B                          ds  2      ;40B 40C
+040D              temp:       ds  2      ;40D 40E             ;addresses stored here
+040F              temq        ds  2      ;40F 410
+0411              temr        ds  1      ;411
+0412              tems        ds  1      ;412
+0413              buff        ds  blen                ;input buffer
+0427              bptr        ds  1
+0428              mcnt        ds  1
+0429              cnt         ds  1
+042A              bcc         ds  1
+042B              code        ds  1
+042C              mark        ds  bmax+1              ;used by breakpoint
+042E              hdat        ds  bmax+1              ;used by breakpoint
+0430              ldat        ds  bmax+1              ;used by breakpoint
+0432              hadr        ds  bmax+1              ;used by breakpoint
+0434              ladr        ds  bmax+1              ;used by breakpoint
+0436              
+0436              hdata:      ds  1                   ;used by hex load - hex data byte
+0437              cksum:      ds  1                   ;used by hex load - checksum
+0438              bytcnt:     ds  1                   ;used by hex load - byte count
+0439              addhi:      ds  1                   ;used by hex load - address hi byte
+043A              addlo:      ds  1                   ;used by hex load - address lo byte
+043B              rectyp:     ds  1                   ;used by hex load - record type
+043C              ;====================================================================
+043C              ;Official Utility RAM Label Equates----------------------------------
+043C              ;START           equ $2FFA        ;(R/W) RAM data
+043C              ;END             equ $2FFC        ;(R/W) RAM data
+043C              ;NEW             equ $2FFE        ;(R/W) RAM data
+043C              ;====================================================================
+2FD0                          org $2fd0
+2FD0              X2FD0:       ds  1   ;2ff0 2ff1 2ff2 2ff3 2ff4 2ff5 2ff6 2ff7 2ff8 2ff9  
+2FD1              X2FD1:       ds  1 
+2FD2              X2FD2:  ds  1 
+2FD3              X2FD3:  ds  1 
+2FD4              X2FD4:  ds  1 
+2FD5              X2FD5:  ds  1 
+2FD6              X2FD6:  ds  1 
+2FD7              X2FD7:  ds  1 
+2FD8              X2FD8:  ds  1 
+2FD9              X2FD9:  ds  1 
+2FDA              X2FDA:  ds  1 
+2FDB              X2FDB:  ds  1 
+2FDC              X2FDC:  ds  1 
+2FDD              X2FDD:  ds  1 
+2FDE              X2FDE:  ds  1 
+2FFA                          org $2ffa
+2FFA              X2FFA:     ds  1   ;2ffa        ;start
+2FFB              X2FFB:     ds  1   ;2ffb
+2FFC              X2FFC:     ds  1   ;2ffc        ;end
+2FFD              X2FFD:     ds  1   ;2ffd
+2FFE              X2FFE:     ds  1   ;2ffe
+2FFF              X2FFF:     ds  1   ;2fff        ;new
+3000              
+3000 > 0000                   end
+
+%heybug-rs (default) . . . . . . = Section  0000-2FFF (Byte)
+ABRT . . . . . . . . . . . . . . = Value    00000250
+ACDU . . . . . . . . . . . . . . = Value    000002C1
+ACHI . . . . . . . . . . . . . . = Value    0000028D (not used)
+ADDHI. . . . . . . . . . . . . . = Value    00000439 (not used)
+ADDLO. . . . . . . . . . . . . . = Value    0000043A (not used)
+ADUM . . . . . . . . . . . . . . = Value    00000369
+AGAP . . . . . . . . . . . . . . = Value    00000361
+AINI . . . . . . . . . . . . . . = Value    00000003
+ALIN . . . . . . . . . . . . . . = Value    00000079
+ALKU . . . . . . . . . . . . . . = Value    00000248
+ALOA . . . . . . . . . . . . . . = Value    000003D4
+ALTE . . . . . . . . . . . . . . = Value    000000AB
+ANSI . . . . . . . . . . . . . . = Value    00000259
+ASRE . . . . . . . . . . . . . . = Value    00000116 (not used)
+BCC. . . . . . . . . . . . . . . = Value    0000042A
+BCHI . . . . . . . . . . . . . . = Value    00000294
+BDUM . . . . . . . . . . . . . . = Value    0000036B
+BIN. . . . . . . . . . . . . . . = Value    00000224
+BK01 . . . . . . . . . . . . . . = Value    00000160
+BK02 . . . . . . . . . . . . . . = Value    0000016E
+BKEN . . . . . . . . . . . . . . = Value    0000017A
+BKPT . . . . . . . . . . . . . . = Value    000001E5
+BLEN . . . . . . . . . . . . . . = Value    00000014
+BLIN . . . . . . . . . . . . . . = Value    00000095
+BLOA . . . . . . . . . . . . . . = Value    000003E1
+BMAX . . . . . . . . . . . . . . = Value    00000001
+BNUM . . . . . . . . . . . . . . = Value    000002F2 (not used)
+BOUT . . . . . . . . . . . . . . = Value    00000269
+BPTR . . . . . . . . . . . . . . = Value    00000427
+BSRE . . . . . . . . . . . . . . = Value    0000012A
+BUFF . . . . . . . . . . . . . . = Value    00000413
+BYTCNT . . . . . . . . . . . . . = Value    00000438 (not used)
+CALT . . . . . . . . . . . . . . = Value    000000D2 (not used)
+CBCC . . . . . . . . . . . . . . = Value    0000023D
+CDUM . . . . . . . . . . . . . . = Value    00000351
+CHIN . . . . . . . . . . . . . . = Value    00000284
+CKSUM. . . . . . . . . . . . . . = Value    00000437 (not used)
+CLBK . . . . . . . . . . . . . . = Value    000001AB
+CLIN . . . . . . . . . . . . . . = Value    0000007F
+CLOA . . . . . . . . . . . . . . = Value    000003F5
+CLR. . . . . . . . . . . . . . . = Value    000001CA
+CNT. . . . . . . . . . . . . . . = Value    00000429
+CNUM . . . . . . . . . . . . . . = Value    000002F5 (not used)
+CODE . . . . . . . . . . . . . . = Value    0000042B
+COM. . . . . . . . . . . . . . . = Value    00000400
+COUT . . . . . . . . . . . . . . = Value    000002B4
+CR . . . . . . . . . . . . . . . = Value    0000000D
+CRLF . . . . . . . . . . . . . . = Value    0000008A
+CSRE . . . . . . . . . . . . . . = Value    00000132
+DALT . . . . . . . . . . . . . . = Value    000000E3
+DDUM . . . . . . . . . . . . . . = Value    00000386
+DELE . . . . . . . . . . . . . . = Value    0000007F
+DISP . . . . . . . . . . . . . . = Value    00000222
+DLAY . . . . . . . . . . . . . . = Value    000002A6
+DLIN . . . . . . . . . . . . . . = Value    00000084
+DLY. . . . . . . . . . . . . . . = Value    000002AD
+DNUM . . . . . . . . . . . . . . = Value    000002D5
+DUMP . . . . . . . . . . . . . . = Value    00000310
+EBUG . . . . . . . . . . . . . . = Value    0000001D
+EDUM . . . . . . . . . . . . . . = Value    0000039A
+ELIN . . . . . . . . . . . . . . = Value    0000007D
+EQ . . . . . . . . . . . . . . . = Value    00000000
+FDUM . . . . . . . . . . . . . . = Value    00000325
+FLAG . . . . . . . . . . . . . . = Value    00000040
+FORM . . . . . . . . . . . . . . = Value    0000035B
+GAP. . . . . . . . . . . . . . . = Value    0000035F
+GNUM . . . . . . . . . . . . . . = Value    000002DB
+GOTO . . . . . . . . . . . . . . = Value    0000013A
+GPAR . . . . . . . . . . . . . . = Value    00003C07
+GT . . . . . . . . . . . . . . . = Value    00000001
+HADR . . . . . . . . . . . . . . = Value    00000432
+HDAT . . . . . . . . . . . . . . = Value    0000042E
+HDATA. . . . . . . . . . . . . . = Value    00000436 (not used)
+HELP . . . . . . . . . . . . . . = Value    00003012
+HELP1. . . . . . . . . . . . . . = Value    00003017
+HELP2. . . . . . . . . . . . . . = Value    00003024
+HELP3. . . . . . . . . . . . . . = Value    00003026
+HELPTXT. . . . . . . . . . . . . = Value    00003033
+HELPTXT1 . . . . . . . . . . . . = Value    000030F4
+HEXLIST. . . . . . . . . . . . . = Value    00003C50
+II . . . . . . . . . . . . . . . = Value    00000020 (not used)
+INIT . . . . . . . . . . . . . . = Value    00000000 (not used)
+L3C00. . . . . . . . . . . . . . = Value    00003C00
+L3C25. . . . . . . . . . . . . . = Value    00003C25
+L3C29. . . . . . . . . . . . . . = Value    00003C29
+L3C2A. . . . . . . . . . . . . . = Value    00003C2A
+L3C3C. . . . . . . . . . . . . . = Value    00003C3C
+L3C4A. . . . . . . . . . . . . . = Value    00003C4A
+L3C53. . . . . . . . . . . . . . = Value    00003C53
+L3C55. . . . . . . . . . . . . . = Value    00003C55
+L3C6E. . . . . . . . . . . . . . = Value    00003C6E
+L3C83. . . . . . . . . . . . . . = Value    00003C83
+LADR . . . . . . . . . . . . . . = Value    00000434
+LALT . . . . . . . . . . . . . . = Value    000000AE
+LDAT . . . . . . . . . . . . . . = Value    00000430
+LF . . . . . . . . . . . . . . . = Value    0000000A
+LINE . . . . . . . . . . . . . . = Value    0000005B
+LKUP . . . . . . . . . . . . . . = Value    00000246
+LLIN . . . . . . . . . . . . . . = Value    00000060
+LNUM . . . . . . . . . . . . . . = Value    000002E1
+LOAD . . . . . . . . . . . . . . = Value    000003B5
+LSRE . . . . . . . . . . . . . . = Value    000000F7
+LT . . . . . . . . . . . . . . . = Value    00000002
+MARK . . . . . . . . . . . . . . = Value    0000042C
+MBUG . . . . . . . . . . . . . . = Value    00000022
+MBUG1. . . . . . . . . . . . . . = Value    00003000
+MCNT . . . . . . . . . . . . . . = Value    00000428
+NOK. . . . . . . . . . . . . . . = Value    000001D7
+ONE. . . . . . . . . . . . . . . = Value    000002CA
+RECTYP . . . . . . . . . . . . . = Value    0000043B (not used)
+RS . . . . . . . . . . . . . . . = Value    00000010
+SEARCH . . . . . . . . . . . . . = Value    00003C6A
+SENSE. . . . . . . . . . . . . . = Value    00000080 (not used)
+SPAC . . . . . . . . . . . . . . = Value    00000020
+SREG . . . . . . . . . . . . . . = Value    000000F4
+STAR . . . . . . . . . . . . . . = Value    0000003A
+STRT . . . . . . . . . . . . . . = Value    000000A4
+TEMP . . . . . . . . . . . . . . = Value    0000040D
+TEMQ . . . . . . . . . . . . . . = Value    0000040F
+TEMR . . . . . . . . . . . . . . = Value    00000411
+TEMS . . . . . . . . . . . . . . = Value    00000412
+UN . . . . . . . . . . . . . . . = Value    00000003
+VEC. . . . . . . . . . . . . . . = Value    00000019
+WC . . . . . . . . . . . . . . . = Value    00000008
+X2FD0. . . . . . . . . . . . . . = Value    00002FD0 (not used)
+X2FD1. . . . . . . . . . . . . . = Value    00002FD1 (not used)
+X2FD2. . . . . . . . . . . . . . = Value    00002FD2 (not used)
+X2FD3. . . . . . . . . . . . . . = Value    00002FD3 (not used)
+X2FD4. . . . . . . . . . . . . . = Value    00002FD4 (not used)
+X2FD5. . . . . . . . . . . . . . = Value    00002FD5 (not used)
+X2FD6. . . . . . . . . . . . . . = Value    00002FD6 (not used)
+X2FD7. . . . . . . . . . . . . . = Value    00002FD7 (not used)
+X2FD8. . . . . . . . . . . . . . = Value    00002FD8 (not used)
+X2FD9. . . . . . . . . . . . . . = Value    00002FD9 (not used)
+X2FDA. . . . . . . . . . . . . . = Value    00002FDA (not used)
+X2FDB. . . . . . . . . . . . . . = Value    00002FDB (not used)
+X2FDC. . . . . . . . . . . . . . = Value    00002FDC (not used)
+X2FDD. . . . . . . . . . . . . . = Value    00002FDD (not used)
+X2FDE. . . . . . . . . . . . . . = Value    00002FDE (not used)
+X2FFA. . . . . . . . . . . . . . = Value    00002FFA
+X2FFB. . . . . . . . . . . . . . = Value    00002FFB
+X2FFC. . . . . . . . . . . . . . = Value    00002FFC
+X2FFD. . . . . . . . . . . . . . = Value    00002FFD
+X2FFE. . . . . . . . . . . . . . = Value    00002FFE
+X2FFF. . . . . . . . . . . . . . = Value    00002FFF
+X3C43. . . . . . . . . . . . . . = Value    00003C43 (not used)
+XGOT . . . . . . . . . . . . . . = Value    00000409
+ZERO . . . . . . . . . . . . . . = Value    000002CC
+
+Module Name:     *NONAME*
+Module Checksum: 0001B727
+
+Thursday, October 24, 2024  15:17:23
+
+        1004 Source Lines    1002 Assembled Lines 
+                >>>>   No Assembly Errors Detected.   <<<<

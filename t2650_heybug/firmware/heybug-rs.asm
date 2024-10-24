@@ -1,18 +1,26 @@
 NOFOLD
-; HEYBUG Firmware for the Signetics 2650
-;
-; Source code written by Signetics taken from
-; Signetics 2650 microprocessor application memo SS50
-;
-; Uses some code transcription of the original 
-; SS50 listing from Jim's repo
-; https://github.com/jim11662418/Signetics-2650-SBC
-;
-; and code from;
-;
-; Hybug BIOS as incorporated into Winarcadia 33.3
-; by James Jacobs from
-; http://amigan.1emu.net/releases/
+; //=======================================================
+; //> HEYBUG Firmware for the Signetics 2650
+; //>
+; //> PIPBUG Source code written by Signetics taken from
+; //> Signetics 2650 microprocessor application memo SS50
+; //
+; //> Uses some code transcription of the original 
+; //> SS50 listing from Jim's repo
+; //> https://github.com/jim11662418/Signetics-2650-SBC
+; //>
+; //> and code from;
+; //>
+; //> HYBUG
+; //> : written by Brian L Young in 1979
+; //> 
+; //> Published article by Amateur Radio Action
+; //> Volume 2 No. 13, Australia. 1979"
+; //>
+; //> Hybug BIOS as incorporated into Winarcadia 33.3
+; //> by James Jacobs from
+; //> http://amigan.1emu.net/releases/
+; //=======================================================
 ;
 ; PIPBUG has been modified as follows:
 ;  - the serial i/o delays modified by AdamT117
@@ -650,10 +658,10 @@ cloa:
             BCTA,eq hexlist   
             COMI,r0 'F'                                     
             BCTA,eq search
-            COMI,r0 'E'                                     
-            BCTA,eq find
-            COMI,r0 'M'                                     
-            BCTA,eq find
+            ; COMI,r0 'E'                                     
+            ; BCTA,eq find
+            ; COMI,r0 'M'                                     
+            ; BCTA,eq move
 
 
 
@@ -710,8 +718,8 @@ helptxt1:   db "Utility Routines:",CR,LF,LF
             ds  $3C00-$,0               ;fill empty space with zeros
             org $3C00         
 L3C00: ;$3C00
-            stra,r1	startu
-            stra,r2	startu+1
+            stra,r1	X2FFA
+            stra,r2	X2FFA+1
             retc,un
 
 
@@ -727,11 +735,11 @@ gpar: ;$3C07
             BSTR,un L3C00                                    ;  9,2 $3C10 3B 6E    gosub L3C00;
             BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C12 3B FA    gosub *$3C0E [L02DB];
             BSTR,un L3C25                                    ;  9,2 $3C14 3B 0F    gosub L3C25;
-            STRA,r1 endu                                    ; 12,3 $3C16 CD 0F FC *($2FFC) = r1;
-            STRA,r2 endu+1                                   ; 12,3 $3C19 CE 0F FD *($2FFD) = r2;
+            STRA,r1 X2FFC                                    ; 12,3 $3C16 CD 0F FC *($2FFC) = r1;
+            STRA,r2 X2FFD                                   ; 12,3 $3C19 CE 0F FD *($2FFD) = r2;
             BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C1C 3B F0    gosub *$3C0E [L02DB];
-            STRA,r1 endu+2                                   ; 12,3 $3C1E CD 0F FE *($2FFE) = r1;
-            STRA,r2 new                                   ; 12,3 $3C21 CE 0F FF *($2FFF) = r2;
+            STRA,r1 X2FFE                                   ; 12,3 $3C1E CD 0F FE *($2FFE) = r1;
+            STRA,r2 X2FFF                                   ; 12,3 $3C21 CE 0F FF *($2FFF) = r2;
             RETC,un                                          ;  9,1 $3C24 17       return;            
 
 L3C25:
@@ -740,20 +748,20 @@ L3C25:
 L3C29:
             retc,un
 L3C2A:
-            loda,r1	startu
-            loda,r2	startu+1
+            loda,r1	X2FFA
+            loda,r2	X2FFB
             bstr,un	L3C25
             bstr,un	L3C00
-            coma,r1	endu
+            coma,r1	X2FFC
             retc,lt
-            coma,r2	endu+1
+            coma,r2	X2FFD
             retc,un
 
 L3C3C:
             bsta,un	crlf
-            loda,r1	startu
+            loda,r1	X2FFA
             bsta,un	bout                    ;$0269
-            loda,r1	startu+1
+            loda,r1	X2FFB
             bstr,un	*$3C43					;$0269 ;INFO: indirect jump
 L3C4A:
             lodi,r0	$20
@@ -767,13 +775,13 @@ hexlist: ;$3C50
 L3C53: ;$3C53
             BSTR,un L3C3C                                    ;  9,2 $3C53 3B 67    gosub L3C3C;
 L3C55: ;$3C55
-            LODA,r1 *startu                                  ; 18,3 $3C55 0D 8F FA r1 = *(*$2FFA);
+            LODA,r1 *X2FFA                                  ; 18,3 $3C55 0D 8F FA r1 = *(*$2FFA);
             BSTR,un *$3C43 ;[bout]                           ; 15,2 $3C58 3B E9    gosub *$3C43 [L0269];
     ;Warning: indirect branch!
             BSTR,un L3C4A                                    ;  9,2 $3C5A 3B 6E    gosub L3C4A;
             BSTR,un L3C2A                                    ;  9,2 $3C5C 3B 4C    gosub L3C2A;
             BCFA,lt mbug                                    ;  9,3 $3C5E 9E 00 22 if CC != LT then goto L0022;
-            LODA,r0 startu+1                                    ; 12,3 $3C61 0C 0F FB r0 = *($2FFB);
+            LODA,r0 X2FFB                                    ; 12,3 $3C61 0C 0F FB r0 = *($2FFB);
             ANDI,r0 $0F                                       ;  6,2 $3C64 44 0F    r0 &= $F;
             BCFR,eq L3C55                                    ;  9,2 $3C66 98 6D    if CC != EQ then goto L3C55;
             BCTR,un L3C53                                    ;  9,2 $3C68 1B 69    goto L3C53;
@@ -786,142 +794,145 @@ search: ;$3C6A
             BSTR,un *$3C3D ;[L008A]                           ; 15,2 $3C6C 3B CF    gosub *$3C3D [L008A];
     ;Warning: indirect branch!
 L3C6E: ;$3C6E
-            LODA,r0 *startu                                   ; 18,3 $3C6E 0C 8F FA r0 = *(*$2FFA);
-            COMA,r0 endu+2                                    ; 12,3 $3C71 EC 0F FE compare r0 against *($2FFE);
+            LODA,r0 *X2FFA                                   ; 18,3 $3C6E 0C 8F FA r0 = *(*$2FFA);
+            COMA,r0 X2FFE                                    ; 12,3 $3C71 EC 0F FE compare r0 against *($2FFE);
             BCFR,eq L3C83                                    ;  9,2 $3C74 98 0D    if CC != EQ then goto L3C83;
             LODI,r3 1                                        ;  6,2 $3C76 07 01    r3 = 1 [SOH];
-            LODA,r0 *startu,r3                                ; 18,3 $3C78 0F EF FA r0 = *(*$2FFA + r3);
-            COMA,r0 new                                    ; 12,3 $3C7B EC 0F FF compare r0 against *($2FFF);
+            LODA,r0 *X2FFA,r3                                ; 18,3 $3C78 0F EF FA r0 = *(*$2FFA + r3);
+            COMA,r0 X2FFF                                    ; 12,3 $3C7B EC 0F FF compare r0 against *($2FFF);
             BCFR,eq L3C83                                    ;  9,2 $3C7E 98 03    if CC != EQ then goto L3C83;
             BSTA,un L3C3C                                    ;  9,3 $3C80 3F 3C 3C gosub L3C3C;
 L3C83: ;$3C83
             BSTA,un L3C2A                                    ;  9,3 $3C83 3F 3C 2A gosub L3C2A;
             BCFR,lt *$3C5F ;[mbug]                           ;6+9,2 $3C86 9A D7    if CC != LT then goto *$3C5F [L0022];
     ;Warning: indirect branch!
-            BCTR,un L3C6E                                    ;  9,2 $3C88 1B 64    goto L3C6E;            
+            BCTR,un L3C6E                                    ;  9,2 $3C88 1B 64    goto L3C6E; 
+
+;Below work in progress
+			
 ;====================================================================
 ; Find HEX  function - Faaaa bbbb xx
 ;====================================================================    
-find: ;$1DA
-            BSTA,un gnum                                    ;  9,3 $01DA 3F 02 DB gosub L02DB;
-            BSTA,un strt                                    ;  9,3 $01DD 3F 00 A4 gosub L00A4;
-            BSTR,un *$3C8B
-            ;[gnum]15,2 $01E0 3B F9    gosub *$1DB [L02DB];
-    ;Warning: indirect branch!
-            STRA,r1 X2FD0                                  ; 12,3 $01E2 CD 04 00 *(X0400) = r1;
-            STRA,r2 X2FD1                                    ; 12,3 $01E5 CE 04 01 *(X0401) = r2;
-            BSTR,un *$3C8B
-            ;[gnum]15,2 $01E8 3B F1    gosub *$1DB [L02DB];
-    ;Warning: indirect branch!
-            STRA,r2 X2FD2                                    ; 12,3 $01EA CE 04 02 *(X0402) = r2;
-L01ED: ;$1ED
-            BSTR,un L0201                                    ;  9,2 $01ED 3B 12    gosub L0201;
-            COMR,r0 *$3C9B
-            ;[com+2]15,2 $01EF E8 FA    compare r0 against *(*P01EB [X0402]);
-            BCFR,eq L01ED                                    ;  9,2 $01F1 98 7A    if CC != EQ then goto L01ED;
-            LODR,r1 *$3CB2
-            ;[X040D] 15,2 $01F3 09 8D    r1 = *(*P0202 [X040D]);
-            BSTA,un bout                                    ;  9,3 $01F5 3F 02 69 gosub L0269;
-            LODR,r1 *$3CB5
-            ;[temp+1]15,2 $01F8 09 8B    r1 = *(*P0205 [X040E]);
-            BSTR,un *$3CA6
-            ;[bout]  15,2 $01FA 3B FA    gosub *$1F6 [L0269];
-    ;Warning: indirect branch!
-            BSTA,un crlf                                    ;  9,3 $01FC 3F 00 8A gosub L008A;
-            BCTR,un L01ED   
-L0201:
-            loda,r1	X2FDD
-            loda,r2	X2FDE
-            addi,r2	$01
-            ppsl	wc
-            addi,r1	$00
-            cpsl	wc
-            bstr,un	*$3c8e						;INFO: indirect jump
-            loda,r0	*X2FDD
-            comr,r1	*$3C93
-            bcfr,eq	L021C
-            comr,r2	*$3C96
-            bctr,eq	L021D
-L021C:
-            retc,un
-        ;
-L021D:
-            eorz	r0
-L021E:
-            bdrr,r3	L021E
-            bdrr,r0	L021E
-            zbrr	mbug1
-            L3D3B:
-            bsta,un	L3C07
-            coma,r1	X2FFA
-            bctr,gt	*X3D47						;INFO: indirect jump
-            coma,r2	X2FFB
-            bcta,gt	L3D84
+; find: ;$1DA
+            ; BSTA,un gnum                                    ;  9,3 $01DA 3F 02 DB gosub L02DB;
+            ; BSTA,un strt                                    ;  9,3 $01DD 3F 00 A4 gosub L00A4;
+            ; BSTR,un *$3C8B
+            ; ;[gnum]15,2 $01E0 3B F9    gosub *$1DB [L02DB];
+    ; ;Warning: indirect branch!
+            ; STRA,r1 X2FD0                                  ; 12,3 $01E2 CD 04 00 *(X0400) = r1;
+            ; STRA,r2 X2FD1                                    ; 12,3 $01E5 CE 04 01 *(X0401) = r2;
+            ; BSTR,un *$3C8B
+            ; ;[gnum]15,2 $01E8 3B F1    gosub *$1DB [L02DB];
+    ; ;Warning: indirect branch!
+            ; STRA,r2 X2FD2                                    ; 12,3 $01EA CE 04 02 *(X0402) = r2;
+; L01ED: ;$1ED
+            ; BSTR,un L0201                                    ;  9,2 $01ED 3B 12    gosub L0201;
+            ; COMR,r0 *$3C9B
+            ; ;[com+2]15,2 $01EF E8 FA    compare r0 against *(*P01EB [X0402]);
+            ; BCFR,eq L01ED                                    ;  9,2 $01F1 98 7A    if CC != EQ then goto L01ED;
+            ; LODR,r1 *$3CB2
+            ; ;[X040D] 15,2 $01F3 09 8D    r1 = *(*P0202 [X040D]);
+            ; BSTA,un bout                                    ;  9,3 $01F5 3F 02 69 gosub L0269;
+            ; LODR,r1 *$3CB5
+            ; ;[temp+1]15,2 $01F8 09 8B    r1 = *(*P0205 [X040E]);
+            ; BSTR,un *$3CA6
+            ; ;[bout]  15,2 $01FA 3B FA    gosub *$1F6 [L0269];
+    ; ;Warning: indirect branch!
+            ; BSTA,un crlf                                    ;  9,3 $01FC 3F 00 8A gosub L008A;
+            ; BCTR,un L01ED   
+; L0201:
+            ; loda,r1	X2FDD
+            ; loda,r2	X2FDE
+            ; addi,r2	$01
+            ; ppsl	wc
+            ; addi,r1	$00
+            ; cpsl	wc
+            ; bstr,un	*$3c8e						;INFO: indirect jump
+            ; loda,r0	*X2FDD
+            ; comr,r1	*$3C93
+            ; bcfr,eq	L021C
+            ; comr,r2	*$3C96
+            ; bctr,eq	L021D
+; L021C:
+            ; retc,un
+        ; ;
+; L021D:
+            ; eorz	r0
+; L021E:
+            ; bdrr,r3	L021E
+            ; bdrr,r0	L021E
+            ; zbrr	mbug1
+            ; L3D3B:
+            ; bsta,un	L3C07
+            ; coma,r1	X2FFA
+            ; bctr,gt	*X3D47						;INFO: indirect jump
+            ; coma,r2	X2FFB
+            ; bcta,gt	L3D84
 ;====================================================================
 ; Move  function - Faaaa bbbb xx
 ;====================================================================    
-L3D49:
-            loda,r0	*X2FFA
-            stra,r0	*X2FFE
-            bsta,un	L3C2A
-            bcfa,lt	L0022
-            bstr,un	L3D5E
-            bsta,un	L3C25
-            bstr,un	L3D65
-            bctr,un	L3D49
-    ;
-L3D5E:
-            loda,r1	X2FFE
-            loda,r2	X2FFF
-            retc,un
-    ;
-L3D65:
-            stra,r1	X2FFE
-            stra,r2	X2FFF
-            retc,un
-    ;
-L3D6C:
-            loda,r1	X2FFC
-            loda,r2	X2FFD
-            bstr,un	L3D7B
-            stra,r1	X2FFC
-            stra,r2	X2FFD
-            retc,un
-    ;
-L3D7B:
-            bdrr,r2	L3D7D
-L3D7D:
-            comi,r2	H'FF'
-            bcfr,eq	L3D83
-            bdrr,r1	L3D83
-L3D83:
-            retc,un
-    ;
-    L3D84:
-            bstr,un	L3D6C
-            ppsl	H'09'
-            bstr,un	L3D5E
-            suba,r2	X2FFB
-            suba,r1	X2FFA
-            cpsl	H'01'
-            adda,r2	X2FFD
-            adda,r1	X2FFC
-            bstr,un	L3D65
-            cpsl	H'08'
-            loda,r0	*X2FFC
-            stra,r0	*X2FFE
-    L3DA2:
-            bsta,un	L3D5E
-            bstr,un	L3D7B
-            bsta,un	L3D65
-            bstr,un	L3D6C
-            loda,r0	*X2FFC
-            stra,r0	*X2FFE
-            coma,r1	X2FFA
-            bctr,gt	L3DA2
-            coma,r2	X2FFB
-            bctr,gt	L3DA2
-            zbrr	L0022
+; L3D49:
+            ; loda,r0	*X2FFA
+            ; stra,r0	*X2FFE
+            ; bsta,un	L3C2A
+            ; bcfa,lt	L0022
+            ; bstr,un	L3D5E
+            ; bsta,un	L3C25
+            ; bstr,un	L3D65
+            ; bctr,un	L3D49
+    ; ;
+; L3D5E:
+            ; loda,r1	X2FFE
+            ; loda,r2	X2FFF
+            ; retc,un
+    ; ;
+; L3D65:
+            ; stra,r1	X2FFE
+            ; stra,r2	X2FFF
+            ; retc,un
+    ; ;
+; L3D6C:
+            ; loda,r1	X2FFC
+            ; loda,r2	X2FFD
+            ; bstr,un	L3D7B
+            ; stra,r1	X2FFC
+            ; stra,r2	X2FFD
+            ; retc,un
+    ; ;
+; L3D7B:
+            ; bdrr,r2	L3D7D
+; L3D7D:
+            ; comi,r2	H'FF'
+            ; bcfr,eq	L3D83
+            ; bdrr,r1	L3D83
+; L3D83:
+            ; retc,un
+    ; ;
+    ; L3D84:
+            ; bstr,un	L3D6C
+            ; ppsl	H'09'
+            ; bstr,un	L3D5E
+            ; suba,r2	X2FFB
+            ; suba,r1	X2FFA
+            ; cpsl	H'01'
+            ; adda,r2	X2FFD
+            ; adda,r1	X2FFC
+            ; bstr,un	L3D65
+            ; cpsl	H'08'
+            ; loda,r0	*X2FFC
+            ; stra,r0	*X2FFE
+    ; L3DA2:
+            ; bsta,un	L3D5E
+            ; bstr,un	L3D7B
+            ; bsta,un	L3D65
+            ; bstr,un	L3D6C
+            ; loda,r0	*X2FFC
+            ; stra,r0	*X2FFE
+            ; coma,r1	X2FFA
+            ; bctr,gt	L3DA2
+            ; coma,r2	X2FFB
+            ; bctr,gt	L3DA2
+            ; zbrr	L0022
 ;====================================================================
 ; RAM definitions
 ;====================================================================
@@ -983,11 +994,11 @@ X2FDC:  ds  1
 X2FDD:  ds  1 
 X2FDE:  ds  1 
             org $2ffa
-X2FFA:     ds  1   ;2ffa
+X2FFA:     ds  1   ;2ffa        ;start
 X2FFB:     ds  1   ;2ffb
-X2FFC:     ds  1   ;2ffc
+X2FFC:     ds  1   ;2ffc        ;end
 X2FFD:     ds  1   ;2ffd
 X2FFE:     ds  1   ;2ffe
-X2FFF:     ds  1   ;2fff
+X2FFF:     ds  1   ;2fff        ;new
 
             end
