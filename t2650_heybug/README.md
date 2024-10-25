@@ -11,10 +11,8 @@ PIPBUG remains as is.
 The following Utility Routines are working;
 - Find Hex String    	Faaaa bbbb xxyy
 - Hex List           	Haaaa bbbb
-
-Pending; 
 - Move             	Maaaa bbbb cccc
-- Find H(E)x        Eaaaa bbbb xx
+- Find Hex        Xaaaa bbbb xx
 
 # Sources and Credits
  

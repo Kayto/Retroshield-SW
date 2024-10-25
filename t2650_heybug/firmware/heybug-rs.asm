@@ -42,19 +42,19 @@ GT          equ  1
 LT          equ  2
 UN          equ  3            
 
-sense       equ $80                     ;sense bit in program status, upper
-flag        equ $40                     ;flag bit in program status, upper
-ii          equ $20                     ;interrupt inhibit bit in program status, upper
-rs          equ $10                     ;register select bit in program status, lower
-wc          equ $08                     ;with/without carry bit in program status,lower
+sense       equ $80                   ;sense bit in program status, upper
+flag        equ $40                   ;flag bit in program status, upper
+ii          equ $20                   ;interrupt inhibit bit in program status, upper
+rs          equ $10                   ;register select bit in program status, lower
+wc          equ $08                   ;with/without carry bit in program status,lower
 
-spac        equ $20                     ;ASCII space
-dele        equ $7F                     ;ASCII delete
-CR          equ $0D                     ;ASCII carriage return
-LF          equ $0A                     ;ASCII line feed
+spac        equ $20                   ;ASCII space
+dele        equ $7F                   ;ASCII delete
+CR          equ $0D                   ;ASCII carriage return
+LF          equ $0A                   ;ASCII line feed
 star        equ ':'
-bmax        equ 1                       ;maximum number of breakpoints
-blen        equ 20                      ;size of input buffer
+bmax        equ 1                     ;maximum number of breakpoints
+blen        equ 20                    ;size of input buffer
 
 
 X3C43		equ	$3C43
@@ -65,10 +65,10 @@ X3C43		equ	$3C43
 init:       lodi,R3 63
             eorz    R0
 aini:       stra,R0 com,R3,-
-            brnr,R3 aini                ;clear memory $0400-$04FF
-            lodi,R0 $077                ;opcode for 'ppsl'
+            brnr,R3 aini              ;clear memory $0400-$04FF
+            lodi,R0 $077              ;opcode for 'ppsl'
             stra,R0 xgot
-            lodi,R0 $1B                 ;opcode for 'bctr,un'
+            lodi,R0 $1B               ;opcode for 'bctr,un'
             stra,R0 xgot+2
             lodi,R0 $80
             stra,R0 xgot+3
@@ -151,14 +151,12 @@ blin:       lodi,R1 2
             stra,R0 buff,R3,+
             bsta,UN cout
             bcta,UN llin
-
 ;====================================================================
 ;store two bytes in R1 and R2 into temp and temp+1
 ;====================================================================
 strt:       stra,R1 temp
             stra,R2 temp+1
             retc,UN
-
 ;====================================================================
 ; display and alter memory
 ;====================================================================            
@@ -189,7 +187,6 @@ dalt:       lodi,R2 1
             adda,R1 temp
             cpsl    wc
             bcta,UN lalt
-
 ;====================================================================
 ; selectively display and alter register
 ;====================================================================
@@ -220,7 +217,6 @@ bsre:       loda,R0 temq
 csre:       loda,R2 temr
             addi,R2 1
             bcta,UN lsre
-
 ;====================================================================
 ; goto address
 ;====================================================================
@@ -238,7 +234,6 @@ goto:       bsta,UN gnum                ;get the address
             loda,R0 com                 ;restore R0
             cpsl    $FF                 ;clear program status, lower
             bcta,UN xgot                ;branch to the address in 'xgot' which branches to the address in temp and temp+1
-
 ;====================================================================
 ; breakpoint runtime code
 ;====================================================================
@@ -271,7 +266,6 @@ bken:       stra,R0 temr
             loda,R1 temp+1
             bsta,UN bout
             bcta,UN mbug
-
 ;====================================================================
 ; clear a breakpoint
 ;====================================================================
@@ -287,22 +281,19 @@ clbk:       eorz    R0
             lodi,R3 1
             stra,R0 *temp,R3
             retc,UN
-
 ;break point mark indicates if set
 ;hadr+ladr is breakpoint address hdat+ldat is two byte
 clr:        bstr,UN nok
             loda,R0 mark,R2
             bcta,EQ ebug
             bstr,UN clbk
-            bcta,UN mbug
-            
+            bcta,UN mbug        
 nok:        bsta,UN gnum
             subi,R2 1
             bcta,LT abrt
             comi,R2 bmax
             bcta,GT abrt
             retc,UN
-
 bkpt:       bstr,UN nok
             loda,R0 mark,R2
             bsfa,EQ clbk
@@ -326,7 +317,6 @@ bkpt:       bstr,UN nok
             lodi,R0 $FF
             stra,R0 mark,R3
             bcta,UN mbug
-
 disp:       db  vec+$80
             db  vec+$80+2
 
@@ -335,8 +325,7 @@ disp:       db  vec+$80
 ;            WARNING 'Address MUST be $0224'
 ;        else
 ;            ds $0224-$,0                
-;        endif
-            
+;        endif         
 ;====================================================================
 ; input two hex characters and form a byte in R1
 ;====================================================================
@@ -357,27 +346,23 @@ bin:        bsta,UN chin
 ;====================================================================           
 ; calculate the BCC, EOR and then rotate left
 ;====================================================================
-; removed to make some space for mbug1
 cbcc:       lodz    R1         
             eora,R0 bcc         
             rrl,R0             
             stra,R0 bcc        
             retc,UN            
-
 ;        ; PIPBUG users expect the 'lkup' function to be located at $0246
 ;        if $ > $0246
 ;            WARNING 'Address MUST be $0246'
 ;        else
 ;            ds $0246-$,0                
-;        endif
-            
+;        endif          
 ;lookup ASCII char in hex value table
 lkup:       lodi,R3 16
 alku        coma,R0 ansi,R3,-
             retc,EQ
             comi,R3 1
             bcfr,LT alku
-
 ;abort exit from any level of subroutine
 ;use ras ptr since possible bkpt prog using it
 abrt:       loda,R0 com+7
@@ -392,8 +377,7 @@ ansi:       db  "0123456789ABCDEF"
             WARNING 'Address MUST be $0269'
         else
             ds $0269-$,0                
-        endif
-            
+        endif         
 ;====================================================================
 ; output byte in R1 as 2 hex characters
 ;====================================================================
@@ -421,13 +405,13 @@ bout:       stra,R1 tems
 ;====================================================================
 ; pipbug serial input function
 ;====================================================================
-chin:       ppsl    rs                  ;select register bank 1
+chin:       ppsl    rs                 ;select register bank 1
             lodi,R0 $80
             wrtc,R0
-            lodi,R1 0                   ;initialize R1
-            lodi,R2 8                   ;load R2 with the number of bits to receive
-achi:       spsu                        ;store program status, upper containing the sense input to R0
-            bctr,LT chin                ;branch back if the sense input is "1" (wait for the start bit)
+            lodi,R1 0                  ;initialize R1
+            lodi,R2 8                  ;load R2 with the number of bits to receive
+achi:       spsu                       ;store program status, upper containing the sense input to R0
+            bctr,LT chin               ;branch back if the sense input is "1" (wait for the start bit)
             eorz    R0               
             wrtc,R0
             bstr,UN dly                ;delay 1/2 bit time
@@ -447,7 +431,7 @@ bchi:       bstr,un	dlay
 ; adjusted delays for Teensy3.6 Retroshield
 ;********************************************************************
 dlay:       eorz    r0
-            lodi,r0 $20    ;set r0 to bit delay
+            lodi,r0 $20    
             bdrr,r0 $
             nop
             nop  
@@ -476,7 +460,6 @@ dly:        lodi,R0 $05
         else
             ds $02B4-$,0                
         endif
-            
 ;====================================================================
 ; pipbug serial output function
 ;====================================================================
@@ -498,12 +481,10 @@ zero:       bdrr,R1 acdu                ;loop until all 8 bits are sent
             ppsu    flag                ;preset the FLAG output (send stop bit)         
             cpsl    rs                  ;select register bank 0
             retc,UN    
-         
 ;get a number from the buffer into R1-R2
 dnum:       loda,R0 code
             bctr,EQ lnum
             retc,UN
-
 gnum:       eorz    R0
             strz    R1
             strz    R2
@@ -536,7 +517,6 @@ cnum:       lodi,R0 $0F
             lodi,R0 1
             stra,R0 code
             bctr,UN lnum
-
 dump:       bstr,un	gnum
             bsta,un	strt
             bstr,un	gnum
@@ -568,16 +548,13 @@ cdum:       bsta,un	bout
             bdrr,r3	cdum
             bstr,un	gap
             bcta,un	mbug
-;
 form:       lodi,r3	$03
             bctr,un	agap
-;
 gap:        lodi,r3	$32
 agap:       lodi,r0	spac
             bsta,un	cout
             bdrr,r3	agap
             retc,un
-;
 adum:       lodi,r2	$FF
 bdum:       stra,r2	mcnt
             loda,r1	temp
@@ -596,7 +573,6 @@ ddum:       loda,r3	cnt
             strz	r1
             bsta,un	bout
             bctr,un	ddum
-;
 edum:       loda,r1	bcc
             bsta,un	bout
             loda,r2	temp+1
@@ -607,7 +583,6 @@ edum:       loda,r1	bcc
             cpsl	wc
             bsta,un	strt
             bcta,un	fdum
-;
 load:      bsta,un	chin
             comi,r0	star
             bcfr,eq	load
@@ -619,8 +594,7 @@ load:      bsta,un	chin
             stra,r1	temp+1
             bsta,un	bin
             brnr,r1	aloa
-            bcta,un	*temp						;INFO: indirect jump
-        ;
+            bcta,un	*temp			;INFO: indirect jump
 aloa:       stra,r1	mcnt
             bsta,un	bin
             loda,r0	bcc
@@ -638,9 +612,7 @@ cloa:
             loda,r0	bcc
             bcfa,eq	ebug
             bcta,un	load           
-
             db	$00,$00
-
 ;==================================================================== 
 ; The High (HY) ROM and Extended (E) function section
 ; HY+E = HEY?
@@ -653,20 +625,22 @@ cloa:
  ;====================================================================           
  mbug1:     comi,R0 '?'
             bcta,EQ help
-;add extras here
             COMI,r0 'H'                                     
             BCTA,eq hexlist   
             COMI,r0 'F'                                     
             BCTA,eq search
-            ; COMI,r0 'E'                                     
-            ; BCTA,eq find
-            ; COMI,r0 'M'                                     
-            ; BCTA,eq move
+            COMI,r0 'X'                                     
+            BCTA,eq find
+            COMI,r0 'M'                                     
+            BCTA,eq move
+            ;COMI,r0 'I'                                     
+            ;BCTA,eq fill
+            ;COMI,r0 'Z'                                     
+            ;BCTA,eq basic
 
 
 
-
-
+;add extras here
             bcta,UN ebug 
 ;====================================================================
 ; help displayed when '?' is entered at the PIPBUG prompt
@@ -676,11 +650,11 @@ help:       bsta,UN crlf                ;start on a new line
             lodi,R3 $FF                 ;256 R3 is pre-incremented in the instruction below
 help1:      loda,R0 helptxt,R3,+        ;load the character into R0 from the text below indexed by R3
             comi,R0 $00                 ;is it zero? (end of string)
-            bcta,EQ help2                ;branch back to pipbug when done
+            bcta,EQ help2               ;branch back to pipbug when done
             bsta,UN cout                ;else, print the character using pipbug serial output
             bctr,UN help1               ;loop back for the next character in the string
 help2:      lodi,R3 $FF     
-help3:      loda,R0 helptxt1,R3,+        ;load the character into R0 from the text below indexed by R3
+help3:      loda,R0 helptxt1,R3,+       ;load the character into R0 from the text below indexed by R3
             comi,R0 $00                 ;is it zero? (end of string)
             bcta,EQ mbug                ;branch back to pipbug when done
             bsta,UN cout                ;else, print the character using pipbug serial output
@@ -689,15 +663,18 @@ helptxt:    db "PIPBUG Commands:",CR,LF,LF              ;16
             db "Alter Memory aaaa  Aaaaa<CR>",CR,LF     ;28
             db "Set Breakpoint n   Bn aaaa<CR>",CR,LF   ;30
             db "Clear Breakpoint n Cn<CR>",CR,LF        ;25
+            db "Dump to tape       Daaaa bbbb<CR>",CR,LF        ;25
             db "Goto Address aaaa  Gaaaa<CR>",CR,LF     ;28         
             db "Load Hex File      L<CR>",CR,LF         ;24
             db "See Register Rn    Sn<CR>",CR,LF,LF,$00     ;25     =156
             
 helptxt1:   db "Utility Routines:",CR,LF,LF
             db "Find Hex String    Faaaa bbbb xxyy<CR>",CR,LF
-            db "Find H(E)x         Eaaaa bbbb xx<CR>",CR,LF
+            db "Find Hex Value     Xaaaa bbbb xx<CR>",CR,LF
             db "Hex List           Haaaa bbbb<CR>",CR,LF   
-            db "M Move             Maaaa bbbb cccc<CR>",CR,LF,$00
+            db "Move               Maaaa bbbb cccc<CR>",CR,LF
+;            db "Fill Memory        Iaaaa bbbb xx<CR>",CR,LF,$00
+
 ;Official Utility EPROM Label Equates-------------------------------------
 ;GPAR            equ $3C07        ;(R/w) EPROM subroutine
 ;INCRT           equ $3C2A        ;(R/w) EPROM subroutine
@@ -721,27 +698,24 @@ L3C00: ;$3C00
             stra,r1	X2FFA
             stra,r2	X2FFA+1
             retc,un
-
-
 gpar: ;$3C07
-            PPSU    flag                                        ;  9,2 $3C07 76 40    PSU |= $40 & %01100111;
-    ;Set Flag (F) bit
+            PPSU    flag                                     ;  9,2 $3C07 76 40    PSU |= $40 & %01100111;
+;Set Flag (F) bit
             PPSL    $02                                      ;  9,2 $3C09 77 02    PSL |= 2;
-    ;Set Compare (COM) bit (now unsigned/logical)
+;Set Compare (COM) bit (now unsigned/logical)
             CPSL    RS+wc                                    ;  9,2 $3C0B 75 18    PSL &= ~($18);
-    ;Clear Register Select (RS) bit (now Register 1..Register 3)
-    ;Clear With Carry (wc) bit
-            BSTA,un gnum                                    ;  9,3 $3C0D 3F 02 DB gosub L02DB;
+;Clear Register Select (RS) bit (now Register 1..Register 3)
+;Clear With Carry (wc) bit
+            BSTA,un gnum                                     ;  9,3 $3C0D 3F 02 DB gosub L02DB;
             BSTR,un L3C00                                    ;  9,2 $3C10 3B 6E    gosub L3C00;
             BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C12 3B FA    gosub *$3C0E [L02DB];
             BSTR,un L3C25                                    ;  9,2 $3C14 3B 0F    gosub L3C25;
             STRA,r1 X2FFC                                    ; 12,3 $3C16 CD 0F FC *($2FFC) = r1;
-            STRA,r2 X2FFD                                   ; 12,3 $3C19 CE 0F FD *($2FFD) = r2;
+            STRA,r2 X2FFD                                    ; 12,3 $3C19 CE 0F FD *($2FFD) = r2;
             BSTR,un *$3C0E ;[gnum]                           ; 15,2 $3C1C 3B F0    gosub *$3C0E [L02DB];
-            STRA,r1 X2FFE                                   ; 12,3 $3C1E CD 0F FE *($2FFE) = r1;
-            STRA,r2 X2FFF                                   ; 12,3 $3C21 CE 0F FF *($2FFF) = r2;
+            STRA,r1 X2FFE                                    ; 12,3 $3C1E CD 0F FE *($2FFE) = r1;
+            STRA,r2 X2FFF                                    ; 12,3 $3C21 CE 0F FF *($2FFF) = r2;
             RETC,un                                          ;  9,1 $3C24 17       return;            
-
 L3C25:
             birr,r2	L3C29
             birr,r1	L3C29
@@ -756,43 +730,42 @@ L3C2A:
             retc,lt
             coma,r2	X2FFD
             retc,un
-
 L3C3C:
             bsta,un	crlf
             loda,r1	X2FFA
-            bsta,un	bout                    ;$0269
+            bsta,un	bout            ;$0269
             loda,r1	X2FFB
-            bstr,un	*$3C43					;$0269 ;INFO: indirect jump
+            bstr,un	*$3C43	        ;$0269 ;INFO: indirect jump
 L3C4A:
             lodi,r0	$20
-            bsta,un	cout                        ;$02B4
+            bsta,un	cout            ;$02B4
             retc,un
 ;====================================================================
 ; HEX list function - Haaaa bbbb
 ;====================================================================
 hexlist: ;$3C50
-            BSTA,un gpar                                    ;  9,3 $3C50 3F 3C 07 gosub L3C07;
+            BSTA,un gpar                                     ;  9,3 $3C50 3F 3C 07 gosub L3C07;
 L3C53: ;$3C53
             BSTR,un L3C3C                                    ;  9,2 $3C53 3B 67    gosub L3C3C;
 L3C55: ;$3C55
-            LODA,r1 *X2FFA                                  ; 18,3 $3C55 0D 8F FA r1 = *(*$2FFA);
+            LODA,r1 *X2FFA                                   ; 18,3 $3C55 0D 8F FA r1 = *(*$2FFA);
             BSTR,un *$3C43 ;[bout]                           ; 15,2 $3C58 3B E9    gosub *$3C43 [L0269];
-    ;Warning: indirect branch!
+;Warning: indirect branch!
             BSTR,un L3C4A                                    ;  9,2 $3C5A 3B 6E    gosub L3C4A;
             BSTR,un L3C2A                                    ;  9,2 $3C5C 3B 4C    gosub L3C2A;
-            BCFA,lt mbug                                    ;  9,3 $3C5E 9E 00 22 if CC != LT then goto L0022;
+            BCFA,lt mbug                                     ;  9,3 $3C5E 9E 00 22 if CC != LT then goto L0022;
             LODA,r0 X2FFB                                    ; 12,3 $3C61 0C 0F FB r0 = *($2FFB);
-            ANDI,r0 $0F                                       ;  6,2 $3C64 44 0F    r0 &= $F;
+            ANDI,r0 $0F                                      ;  6,2 $3C64 44 0F    r0 &= $F;
             BCFR,eq L3C55                                    ;  9,2 $3C66 98 6D    if CC != EQ then goto L3C55;
             BCTR,un L3C53                                    ;  9,2 $3C68 1B 69    goto L3C53;
 ;====================================================================
 ; Find HEX string function - Faaaa bbbb xxyy
 ;====================================================================    
 search: ;$3C6A
-            BSTR,un *$3C51 ;[L3C07]                           ; 15,2 $3C6A 3B E5    gosub *$3C51 [L3C07];
-    ;Warning: indirect branch!
-            BSTR,un *$3C3D ;[L008A]                           ; 15,2 $3C6C 3B CF    gosub *$3C3D [L008A];
-    ;Warning: indirect branch!
+            BSTR,un *$3C51 ;[L3C07]                          ; 15,2 $3C6A 3B E5    gosub *$3C51 [L3C07];
+;Warning: indirect branch!
+            BSTR,un *$3C3D ;[L008A]                          ; 15,2 $3C6C 3B CF    gosub *$3C3D [L008A];
+;Warning: indirect branch!
 L3C6E: ;$3C6E
             LODA,r0 *X2FFA                                   ; 18,3 $3C6E 0C 8F FA r0 = *(*$2FFA);
             COMA,r0 X2FFE                                    ; 12,3 $3C71 EC 0F FE compare r0 against *($2FFE);
@@ -805,134 +778,91 @@ L3C6E: ;$3C6E
 L3C83: ;$3C83
             BSTA,un L3C2A                                    ;  9,3 $3C83 3F 3C 2A gosub L3C2A;
             BCFR,lt *$3C5F ;[mbug]                           ;6+9,2 $3C86 9A D7    if CC != LT then goto *$3C5F [L0022];
-    ;Warning: indirect branch!
+;Warning: indirect branch!
             BCTR,un L3C6E                                    ;  9,2 $3C88 1B 64    goto L3C6E; 
-
-;Below work in progress
-			
 ;====================================================================
-; Find HEX  function - Faaaa bbbb xx
-;====================================================================    
-; find: ;$1DA
-            ; BSTA,un gnum                                    ;  9,3 $01DA 3F 02 DB gosub L02DB;
-            ; BSTA,un strt                                    ;  9,3 $01DD 3F 00 A4 gosub L00A4;
-            ; BSTR,un *$3C8B
-            ; ;[gnum]15,2 $01E0 3B F9    gosub *$1DB [L02DB];
-    ; ;Warning: indirect branch!
-            ; STRA,r1 X2FD0                                  ; 12,3 $01E2 CD 04 00 *(X0400) = r1;
-            ; STRA,r2 X2FD1                                    ; 12,3 $01E5 CE 04 01 *(X0401) = r2;
-            ; BSTR,un *$3C8B
-            ; ;[gnum]15,2 $01E8 3B F1    gosub *$1DB [L02DB];
-    ; ;Warning: indirect branch!
-            ; STRA,r2 X2FD2                                    ; 12,3 $01EA CE 04 02 *(X0402) = r2;
-; L01ED: ;$1ED
-            ; BSTR,un L0201                                    ;  9,2 $01ED 3B 12    gosub L0201;
-            ; COMR,r0 *$3C9B
-            ; ;[com+2]15,2 $01EF E8 FA    compare r0 against *(*P01EB [X0402]);
-            ; BCFR,eq L01ED                                    ;  9,2 $01F1 98 7A    if CC != EQ then goto L01ED;
-            ; LODR,r1 *$3CB2
-            ; ;[X040D] 15,2 $01F3 09 8D    r1 = *(*P0202 [X040D]);
-            ; BSTA,un bout                                    ;  9,3 $01F5 3F 02 69 gosub L0269;
-            ; LODR,r1 *$3CB5
-            ; ;[temp+1]15,2 $01F8 09 8B    r1 = *(*P0205 [X040E]);
-            ; BSTR,un *$3CA6
-            ; ;[bout]  15,2 $01FA 3B FA    gosub *$1F6 [L0269];
-    ; ;Warning: indirect branch!
-            ; BSTA,un crlf                                    ;  9,3 $01FC 3F 00 8A gosub L008A;
-            ; BCTR,un L01ED   
-; L0201:
-            ; loda,r1	X2FDD
-            ; loda,r2	X2FDE
-            ; addi,r2	$01
-            ; ppsl	wc
-            ; addi,r1	$00
-            ; cpsl	wc
-            ; bstr,un	*$3c8e						;INFO: indirect jump
-            ; loda,r0	*X2FDD
-            ; comr,r1	*$3C93
-            ; bcfr,eq	L021C
-            ; comr,r2	*$3C96
-            ; bctr,eq	L021D
-; L021C:
-            ; retc,un
-        ; ;
-; L021D:
-            ; eorz	r0
-; L021E:
-            ; bdrr,r3	L021E
-            ; bdrr,r0	L021E
-            ; zbrr	mbug1
-            ; L3D3B:
-            ; bsta,un	L3C07
-            ; coma,r1	X2FFA
-            ; bctr,gt	*X3D47						;INFO: indirect jump
-            ; coma,r2	X2FFB
-            ; bcta,gt	L3D84
+; Find HEX  function - Eaaaa bbbb xx
+;==================================================================== 
+find:                
+            BSTR,un *$3C51 ;[L3C07]                           ; 15,2 $3C6A 3B E5    gosub *$3C51 [L3C07];
+;Warning: indirect branch!
+            bsta,un     crlf
+find2: ;$3C6E
+            LODA,r0 *X2FFA                                   ; 18,3 $3C6E 0C 8F FA r0 = *(*$2FFA);
+            COMA,r0 X2FFF                                    ; 12,3 $3C7B EC 0F FF compare r0 against *($2FFF);
+            BCFR,eq find3                                    ;  9,2 $3C7E 98 03    if CC != EQ then goto L3C83;
+            BSTA,un L3C3C                                    ;  9,3 $3C80 3F 3C 3C gosub L3C3C;
+find3: ;$3C83
+            BSTA,un L3C2A                                    ;  9,3 $3C83 3F 3C 2A gosub L3C2A;
+            BCFa,lt *$3c5f;$3C87 ;[mbug]                     ;6+9,2 $3C86 9A D7    if CC != LT then goto *$3C5F [L0022];
+;Warning: indirect branch!
+            BCTR,un find2   			
 ;====================================================================
 ; Move  function - Faaaa bbbb xx
 ;====================================================================    
-; L3D49:
-            ; loda,r0	*X2FFA
-            ; stra,r0	*X2FFE
-            ; bsta,un	L3C2A
-            ; bcfa,lt	L0022
-            ; bstr,un	L3D5E
-            ; bsta,un	L3C25
-            ; bstr,un	L3D65
-            ; bctr,un	L3D49
-    ; ;
-; L3D5E:
-            ; loda,r1	X2FFE
-            ; loda,r2	X2FFF
-            ; retc,un
-    ; ;
-; L3D65:
-            ; stra,r1	X2FFE
-            ; stra,r2	X2FFF
-            ; retc,un
-    ; ;
-; L3D6C:
-            ; loda,r1	X2FFC
-            ; loda,r2	X2FFD
-            ; bstr,un	L3D7B
-            ; stra,r1	X2FFC
-            ; stra,r2	X2FFD
-            ; retc,un
-    ; ;
-; L3D7B:
-            ; bdrr,r2	L3D7D
-; L3D7D:
-            ; comi,r2	H'FF'
-            ; bcfr,eq	L3D83
-            ; bdrr,r1	L3D83
-; L3D83:
-            ; retc,un
-    ; ;
-    ; L3D84:
-            ; bstr,un	L3D6C
-            ; ppsl	H'09'
-            ; bstr,un	L3D5E
-            ; suba,r2	X2FFB
-            ; suba,r1	X2FFA
-            ; cpsl	H'01'
-            ; adda,r2	X2FFD
-            ; adda,r1	X2FFC
-            ; bstr,un	L3D65
-            ; cpsl	H'08'
-            ; loda,r0	*X2FFC
-            ; stra,r0	*X2FFE
-    ; L3DA2:
-            ; bsta,un	L3D5E
-            ; bstr,un	L3D7B
-            ; bsta,un	L3D65
-            ; bstr,un	L3D6C
-            ; loda,r0	*X2FFC
-            ; stra,r0	*X2FFE
-            ; coma,r1	X2FFA
-            ; bctr,gt	L3DA2
-            ; coma,r2	X2FFB
-            ; bctr,gt	L3DA2
-            ; zbrr	L0022
+move:
+	    bsta,un	gpar
+	    coma,r1	X2FFA
+	    bctr,gt	*$3CAE				      ;INFO: indirect jump
+	    coma,r2	X2FFB
+	    bcta,gt	L3D84
+L3D49:
+            loda,r0	*X2FFA
+            stra,r0	*X2FFE
+            bsta,un	L3C2A
+            bcfa,lt	mbug
+            bstr,un	L3D5E
+            bsta,un	L3C25
+            bstr,un	L3D65
+            bctr,un	L3D49
+L3D5E:
+            loda,r1	X2FFE
+            loda,r2	X2FFF
+            retc,un
+L3D65:
+            stra,r1	X2FFE
+            stra,r2	X2FFF
+            retc,un
+L3D6C:
+            loda,r1	X2FFC
+            loda,r2	X2FFD
+            bstr,un	L3D7B
+            stra,r1	X2FFC
+            stra,r2	X2FFD
+            retc,un
+L3D7B:
+            bdrr,r2	L3D7D
+L3D7D:
+            comi,r2	$FF
+            bcfr,eq	L3D83
+            bdrr,r1	L3D83
+L3D83:
+            retc,un
+L3D84:
+            bstr,un	L3D6C
+            ppsl	$09
+            bstr,un	L3D5E
+            suba,r2	X2FFB
+            suba,r1	X2FFA
+            cpsl	$01
+            adda,r2	X2FFD
+            adda,r1	X2FFC
+            bstr,un	L3D65
+            cpsl	$08
+            loda,r0	*X2FFC
+            stra,r0	*X2FFE
+L3DA2:
+            bsta,un	L3D5E
+            bstr,un	L3D7B
+            bsta,un	L3D65
+            bstr,un	L3D6C
+            loda,r0	*X2FFC
+            stra,r0	*X2FFE
+            coma,r1	X2FFA
+            bctr,gt	L3DA2
+            coma,r2	X2FFB
+            bctr,gt	L3DA2
+            zbrr	mbug
 ;====================================================================
 ; RAM definitions
 ;====================================================================
