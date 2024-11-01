@@ -21,19 +21,27 @@ The following Utility Routines are working;
  
 ## PipBug & HyBug
 ```
-PipBug Firmware for the Signetics 2650
-
-Source code written by Signetics taken from
-Signetics 2650 microprocessor application memo SS50
-
-Uses some code transcription of the original 
-SS50 listing from Jim's repo
-https://github.com/jim11662418/Signetics-2650-SBC
-
-and code from;
-
-Hybug BIOS as incorporated into Winarcadia 33.3
-by James Jacobs from
-http://amigan.1emu.net/releases/
+; //=======================================================
+; //> HEYBUG Firmware for the Signetics 2650
+; //>
+; //> PIPBUG Source code written by Signetics taken from
+; //> Signetics 2650 microprocessor application memo SS50
+; //
+; //> Uses some code transcription of the original 
+; //> SS50 listing from Jim's repo
+; //> https://github.com/jim11662418/Signetics-2650-SBC
+; //>
+; //> and code from;
+; //>
+; //> HYBUG
+; //> : written by Brian L Young in 1979
+; //> 
+; //> Published article by Amateur Radio Action
+; //> Volume 2 No. 13, Australia. 1979"
+; //>
+; //> Hybug BIOS as incorporated into Winarcadia 33.3
+; //> by James Jacobs from
+; //> http://amigan.1emu.net/releases/
+; //=======================================================
 ```
 
