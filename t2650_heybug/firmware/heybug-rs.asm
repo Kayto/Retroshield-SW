@@ -37,6 +37,8 @@ PAGE 255
 WIDTH 160
 
 ;2650 specific equates
+Z           equ  0
+P           equ  1
 EQ          equ  0
 GT          equ  1
 LT          equ  2
@@ -613,6 +615,347 @@ cloa:
             bcfa,eq	ebug
             bcta,un	load           
             db	$00,$00
+
+
+
+
+
+;==================================================================== 
+; 2650 Line Assembler - Improved
+; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+; ELECTRONICS Austraila, .February, 1980
+;=================================================================== 			
+;temp remove
+;            ds  $1590-$,0               ;fill empty space with zeros
+;            org $1590
+; lass:
+			; bsta,un	crlf                           ;15C0 : 3F 00 8A		"?  "	[3]		
+			; bcta,un	L1600                           ;15C3 : 1F 16 00		"   "	[3]				
+
+
+
+
+; ;modification for improved error handling
+            ; ds  $159E-$,0               ;fill empty space with zeros
+            ; org $159E
+
+            ; db $00,$00
+
+; L15A0:            ;load and store subr
+            ; loda,r1 $040D
+            ; loda,r2 $040e
+            ; strr,r1 $159E
+            ; strr,r2 $159F
+            ; retc,un
+; L15AB:            ;load addr subr
+            ; lodr,r1 $159E
+            ; lodr,r2 $159F
+            ; retc,un
+; L15B0:            ;new error handling routine
+            ; cpsl $FF
+            ; cpsu $0F
+            ; lodi,r1 $08
+            ; loda,r1 *$15c3
+            ; zbsr *$0020
+            ; bdrr,r1 $15b6
+            ; zbsr *$0025
+            ; bstr,un $15ab
+            ; bcta,un $160c
+; L15C4:            ;error message
+            ; db $52,$4f,$52
+            ; db $52,$45,$20
+            ; db $20,$3F			
+
+ ;====================================================================           
+           ds  $15C0-$,0               ;fill empty space with zeros
+           org $15C0
+lass:       bsta,UN crlf
+           bcta,UN L1600
+           ds  $15CC-$,0               ;fill empty space with zeros
+           org $15CC
+
+	db $F4,$0C,$18,$02
+    db	$45,$1F,$6D,$04,$2A,$1F,$17,$5B,$F4,$04,$98,$0F,$3F,$1A,$95,$CE
+    db	$84,$0D,$3B,$0F,$EF,$04,$29,$9A,$25,$1B,$71,$3B,$F0,$1B,$1D,$02
+    db	$69,$1A,$CD,$0D,$04,$0D,$0E,$04,$0E,$DA,$02,$D9,$00,$1F,$00,$A4
+L1600: ;$1600
+	;db $20,$07,$14,$CF,$5A,$40,$5B,$7B,$3F,$1A,$55,$C0
+    db	$20,$07,$14,$CF,$5A,$40,$5B,$7B,$3F,$1A,$55,$C0
+	
+	
+;==================================================================== 
+; 2650 Line Assembler - Improved
+; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+; ELECTRONICS Austraila, .February, 1980
+;=================================================================== 
+; *MODIFIED START SEQUENCE
+    ; BSTR,UN *$15FE      ; 160C 3BF0  		;         
+    ; BSTA,UN $15A0       ; 160E 3F15A0		;  ;Go to new subr
+    ; BSTR,UN *$15EF      ; 1611 3BDC			; 
+    ; LODZ    r2          ; 1613 02			; 
+    ; STRZ    r1          ; 1614 C1			; 
+    ; BSTR,UN *$15EF      ; 1615 3BD8			; 
+    ; LODI,R0 $2E         ; 1617 042E			; 
+    ; BSTA,UN $02B4       ; 1619 3F02B4		; 
+    ; BSTR,UN *$15F1      ; 161C 3BD3			; 
+;=================================================================== 
+
+
+;       0   1   2   3   4   5   6   7   8   9  A   B   C    D   E   F
+;$160c                                              
+													db $3B,$F0,$0D,$04	;ok comment out for improved line assembler 
+	db $0D,$3B,$DC,$0D,$04,$0E,$3B,$D7,$04,$2E,$BB,$A0,$3B,$D3			;ok comment out for improved line assembler 
+;$161e                                                      
+                                                            db $0C,$1A	;ok
+;$1620
+	;db $02,$E4,$2A,$18,$69,$E4,$40,$98,$3C,$0F,$3A,$02,$A4,$30,$1E,$30	; modified
+;$162F
+    db $02,$E4,$2A,$18,$69,$E4,$40,$98,$3C,$0F,$3A,$02,$A4,$30,$1E,$02	;ok comment out for improved line assembler
+    db	$50,$C3,$E7,$09,$19,$F9,$D3,$06,$01,$0F,$7A,$40,$CC,$04,$0F,$C1
+    db	$0F,$7A,$41,$CC,$04,$10,$61,$18,$1A,$0C,$84,$0F,$CF,$7A,$40,$0E
+    db	$E4,$0F,$CF,$7A,$41,$0C,$04,$0D,$CC,$84,$0F,$0C,$04,$0E,$CE,$E4
+    db	$0F,$1B,$56,$07,$02,$20,$CC,$04,$2A,$3B,$BE,$3F,$17,$7A,$CC,$04
+    db	$11,$60,$9A,$2B,$44,$0F,$1C,$00,$22,$F4,$02,$98,$9C,$3B,$AA,$0F
+    db	$7A,$02,$C2,$0F,$3A,$02,$EF,$04,$29,$9E,$16,$0E,$E2,$18,$FB,$CC
+    db	$84,$0D,$02,$3F,$15,$F3,$C2,$1B,$6A,$15,$D8,$C0,$C0,$1A,$95,$CE
+    db	$84,$0D,$E4,$10,$9A,$21,$87,$01,$3F,$17,$6B,$0F,$7A,$02,$E4,$40
+
+    ;$16B0
+	;db $99,$0A,$3F,$17,$7A,$84,$10,$18,$05,$1F,$2B  ;modified
+;$16BA                                          
+    db $99,$0A,$3F,$17,$7A,$84,$10,$18,$05,$1F,$02  ;ok comment out for improved line assembler                                
+;$16BB                                          
+                                                db $50,$3B,$DF,$46,$03	;ok
+    db	$0C,$84,$0D,$62,$CC,$84,$0D,$3B,$CB,$0C,$04,$11,$F4,$01,$1C,$16
+    db	$0E,$F4,$02,$1C,$17,$22,$3B,$D1,$0F,$7A,$02,$E4,$30,$9A,$1B,$87
+    db	$01,$05,$FF,$ED,$37,$CF,$18,$06,$E5,$04,$1A,$77,$1B,$CC,$D1,$D1
+    db	$D1,$D1,$D1,$6D,$04,$2A,$C9,$FC,$1B,$5C,$E4,$40,$98,$24,$0F,$3A
+
+    ;$1700
+	;db $02,$A4,$30,$1E,$05  ;modified
+;$1704
+    db $02,$A4,$30,$1E,$02  ;ok comment out for improved line assembler
+;$1705                  
+                        db $50,$C3,$E7,$09,$19,$F9,$D3,$0F,$7A,$40,$C1	;ok
+    db	$0F,$7A,$41,$C2,$0C,$04,$0D,$CF,$7A,$40,$0C,$04,$0E,$CF,$7A,$41
+    db	$1B,$B7,$3F,$1A,$95,$0C,$04,$11,$F4,$08,$18,$AD,$F4,$04,$98,$24
+    db	$77,$09,$A6,$01,$A5,$00,$77,$01,$AE,$04,$0E,$AD,$04,$0D,$75,$08  
+;$1740
+	;db $18,$0D,$85,$01,$9C,$46  ;modified
+;$1745                    
+	db $18,$0D,$85,$01,$9C,$02  ;ok comment out for improved line assembler
+                            db $50,$F6,$C0,$98,$FA,$46,$7F,$1B,$05,$04	;ok
+    db	$C0,$42,$98,$F1,$6E,$04,$2A,$1B,$0A,$15,$CC,$CD,$84,$0D,$02,$3F
+    db	$15,$F3,$C2,$CE,$84,$0D,$3B,$F8,$1F,$16,$0E,$04,$20,$FB,$00,$EF
+    db	$3A,$02,$18,$7B,$EF,$04,$29,$9A,$CC,$17,$06,$FC,$A7,$01,$0F,$3A
+    db	$02,$EB,$F2,$9A,$0D,$E4,$30,$1A,$09,$CE,$79,$40,$DA,$70,$87,$01
+    db	$1B,$07,$04,$20,$CE,$79,$40,$DA,$7B,$CF,$04,$28,$75,$01,$77,$08
+    db	$05,$17,$06,$D4,$CD,$04,$0F,$CE,$04,$10,$07,$FF,$0F,$A4,$0F,$1C
+
+;$17B0
+	db $02;ok comment out for improved line assembler
+    ;db $B1  ;modified
+        db $50,$EF,$7A,$3C,$18,$06,$86,$06,$85,$00,$1B,$67,$E7,$03,$1A	;ok
+    db	$6B,$0F,$A4,$0F,$C2,$0F,$A4,$0F,$0F,$04,$28,$75,$08,$17,$00,$2C
+    db	$2B,$2D,$23,$2A,$52,$30,$20,$20,$00,$F0,$52,$31,$20,$20,$01,$F0
+    db	$52,$32,$20,$20,$02,$F0,$52,$33,$20,$20,$03,$F0,$50,$20,$20,$20
+    db	$01,$F0,$5A,$20,$20,$20,$00,$F0,$4E,$20,$20,$20,$02,$F0,$4C,$54
+    db	$20,$20,$02,$F0,$45,$51,$20,$20,$00,$F0,$47,$54,$20,$20,$01,$F0
+    db	$55,$4E,$20,$20,$03,$F0,$45,$4E,$44,$20,$00,$80,$4F,$52,$47,$20
+    db	$00,$81,$41,$53,$43,$49,$00,$82,$4C,$4F,$44,$5A,$00,$01,$4C,$4F
+    db	$44,$49,$04,$02,$4C,$4F,$44,$52,$08,$04,$4C,$4F,$44,$41,$03,$08
+    db	$53,$54,$52,$5A,$C0,$01,$53,$54,$52,$52,$C8,$04,$53,$54,$52,$41
+    db	$CC,$08,$49,$4F,$52,$5A,$60,$01,$49,$4F,$52,$49,$64,$02,$49,$4F
+    db	$52,$52,$68,$04,$49,$4F,$52,$41,$6C,$08,$41,$4E,$44,$5A,$40,$01
+    db	$41,$4E,$44,$49,$44,$02,$41,$4E,$44,$52,$48,$04,$41,$4E,$44,$41
+    db	$4C,$08,$45,$4F,$52,$5A,$20,$01,$45,$4F,$52,$49,$24,$02,$45,$4F
+    db	$52,$52,$28,$04,$45,$4F,$52,$41,$2C,$08,$42,$43,$54,$52,$18,$04
+    db	$42,$43,$54,$41,$1C,$0C,$42,$43,$46,$52,$98,$04,$42,$43,$46,$41
+    db	$9C,$0C,$43,$4F,$4D,$5A,$E0,$01,$43,$4F,$4D,$49,$E4,$02,$43,$4F
+    db	$4D,$52,$E8,$04,$43,$4F,$4D,$41,$EC,$08,$41,$44,$44,$5A,$80,$01
+    db	$41,$44,$44,$49,$84,$02,$41,$44,$44,$52,$88,$04,$41,$44,$44,$41
+    db	$8C,$08,$53,$55,$42,$5A,$A0,$01,$53,$55,$42,$49,$A4,$02,$53,$55
+    db	$42,$52,$A8,$04,$53,$55,$42,$41,$AC,$08,$52,$45,$54,$43,$14,$01
+    db	$52,$45,$54,$45,$34,$01,$42,$53,$54,$52,$38,$04,$42,$53,$54,$41
+    db	$3C,$0C,$42,$53,$46,$52,$B8,$04,$42,$53,$46,$41,$BC,$0C,$52,$52
+    db	$52,$20,$50,$01,$52,$52,$4C,$20,$D0,$01,$43,$50,$53,$55,$74,$12
+    db	$43,$50,$53,$4C,$75,$12,$50,$50,$53,$55,$76,$12,$50,$50,$53,$4C
+    db	$77,$12,$42,$52,$4E,$52,$58,$04,$42,$52,$4E,$41,$5C,$0C,$42,$49
+    db	$52,$52,$D8,$04,$42,$49,$52,$41,$DC,$0C,$42,$44,$52,$52,$F8,$04
+    db	$42,$44,$52,$41,$FC,$0C,$42,$53,$4E,$52,$78,$04,$42,$53,$4E,$41
+    db	$7C,$0C,$4E,$4F,$50,$20,$C0,$11,$48,$41,$4C,$54,$40,$11,$54,$4D
+    db	$49,$20,$F4,$02,$57,$52,$54,$44,$F0,$01,$52,$45,$44,$44,$70,$01
+    db	$57,$52,$54,$43,$B0,$01,$52,$45,$44,$43,$30,$01,$57,$52,$54,$45
+    db	$D4,$02,$52,$45,$44,$45,$54,$02,$5A,$42,$53,$52,$BB,$10,$5A,$42
+    db	$52,$52,$9B,$10,$54,$50,$53,$55,$B4,$12,$54,$50,$53,$4C,$B5,$12
+    db	$4C,$50,$53,$55,$92,$11,$4C,$50,$53,$4C,$93,$11,$53,$50,$53,$55
+    db	$12,$11,$53,$50,$53,$4C,$13,$11,$42,$53,$58,$41,$BF,$1C,$42,$58
+    db	$41,$20,$9F,$1C,$44,$41,$52,$20,$94,$01,$4C,$44,$50,$4C,$10,$1C
+    db	$53,$54,$50,$4C,$11,$1C,$44,$41,$54,$41,$00,$84,$00,$00,$00,$00
+    db	$00,$00
+
+            ds  $1a55-$,0               ;fill empty space with zeros
+            org $1a55
+;       0   1   2   3   4   5   6   7   8   9  A   B   C    D   E   F
+	                    db $05,$1A,$06,$6C,$3F,$00,$A4,$07,$FF,$0F,$A4	;ok
+;$1a60
+    db	$0D,$18,$04,$BB,$A0,$1B,$77,$05,$04,$06,$40,$17,$32,$36,$35,$30
+    db	$20,$4C,$49,$4E,$45,$20,$41,$53,$53,$45,$4D,$42,$4C,$45,$52,$0D
+    db	$0A,$0A,$00,$00,$A4,$30,$1A,$0A,$E4,$0A,$16,$A4,$07,$1A,$03,$E4
+;$1a90
+	;db $10,$16,$1F,$94  ;modified
+;$1a93
+    db	$10,$16,$1F,$02 ;comment out for improved line assembler
+                    db $50,$20,$C1,$C2,$CC,$04,$12,$08,$FC,$15,$EF,$04	;ok
+	db $29,$14,$0F,$7A,$02,$E4,$20,$98,$02,$DB,$70,$3B,$57,$D2,$D2,$D2	;ok
+	db $D2,$CE,$04,$28,$46,$F0,$62,$C2,$D1,$D1,$D1,$D1,$45,$F0,$08,$F2	;ok
+;$1ac0
+	db $44,$0F,$61,$C1,$04,$01,$C8,$D1,$DB,$54,$0A,$0D,$5E
+;$1acd    
+   db $07,$00,$E7														;ok comment out for improved line assembler
+	db $3C,$1C,$00,$1D,$3F,$02,$86,$E4,$7F,$98,$0A,$03,$18,$71,$0F,$5A	;ok comment out for improved line assembler
+	db $02,$BB,$A0,$1B,$6A,$05,$03,$ED,$7A,$C9,$18,$09,$F9,$79,$CF,$7A	;ok comment out for improved line assembler
+	db $02,$BB,$A0,$DB,$5A,$CF,$04,$29,$CD,$04,$2A,$07,$00,$9B,$A5		;ok comment out for improved line assembler
+
+;==================================================================== 
+; 2650 Line Assembler - Improved
+; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+; ELECTRONICS Austraila, .February, 1980
+;===================================================================     
+    
+;modified line input routine                                                           							; ;
+; L1ACD:                                             ; 1ACD								
+		; lodi,r3	$00                                        ; 1ACD : 07 00			   "  "	[2]
+; L1ACF:                                             ; 1ACF								
+		; comi,r3	$3C                                      ; 1ACF : E7 3C			   " <"	[2]
+		; ;bcta,eq	L15B0                                      ; 1AD1 : 1C 15 B0	   "   "	[3]
+        ; db $1c,$d3,$b0
+		; bsta,un	$0286                                      ; 1AD4 : 3F 02 86	   "?  "	[3]
+		; comi,r0	$7F                                      ; 1AD7 : E4 7F			   "  "	[2]
+; X1AD9:                                             ; 1AD9								
+		; bcfr,eq	L1AE6                                      ; 1AD9 : 98 0B		    "  "	[3]
+		; lodz	r3                                         ; 1ADB : 03			    " "		[2]
+		; bctr,eq	L1ACF                                      ; 1ADC : 18 71		    " q"	[3]
+		; lodi,r0	$08                                      ; 1ADE : 04 08		    "  "	[2]
+		; zbsr	*$0020			;INFO: indirect jump     ; 1AE0 : BB A0		    "  "	[3]
+		; subi,r3	$01                                      ; 1AE2 : A7 01		    "  "	[2]
+		; bctr,un	L1ACF                                      ; 1AE4 : 1B 69		    " i"	[3]
+                                                           							; ; ;
+; L1AE6:                                             ; 1AE6								
+		; lodi,r1	$03                                      ; 1AE6 : 05 03		    "  "	[2]
+; L1AE8:                                             ; 1AE8								
+		; coma,r1	$1AC9                                      ; 1AE8 : ED 1A C9	   "   "	[4]
+		; bctr,eq	L1AF6                                      ; 1AEB : 18 09			   "  "	[3]
+		; bdrr,r1	L1AE8                                      ; 1AED : F9 79			   " y"	[3]
+		; stra,r3	$1A02                                      ; 1AEF : CF 1A 02	    "   "	[4]
+		; zbsr	*$0020			;INFO: indirect jump     ; 1AF2 : BB A0			   "  "	[3]
+		; birr,r3	L1ACF                                      ; 1AF4 : DB 59			   " Y"	[3]
+		; L1AF6:                                             ; 1AF6								
+		; stra,r3	$0429                                      ; 1AF6 : CF 04 29	    "  )"	[4]
+		; stra,r1	$042A                                     ; 1AF9 : CD 04 2A	    "  *"	[4]
+		; lodi,r3	$00                                        ; 1AFC : 07 00			   "  "	[2]
+		; zbrr	*$0025			;INFO: indirect jump	 ; 1AFE : 9B A5			   "  "	[3]		
+
+;==================================================================== 
+; An improved 2650 disassembler
+; by JAMIESON ROWE 
+; ELECTRONICS Australia, August, 1979
+;==================================================================== 
+        ds  $1B00-$,0               ;fill empty space with zeros
+        org $1B00
+        db	$76,$60,$77,$02,$3F,$02,$DB,$3F,$1C,$1C,$3B,$F9
+        db	$CD,$1A,$48,$CE,$1A,$49,$E9,$AB,$19,$07,$1E,$02
+        db	$50,$EA,$AA,$99,$FA,$3B,$E6,$CE,$1A,$40,$08,$FC
+        db	$CC,$1A,$41,$18,$08,$05,$1D,$06,$9E,$3F,$1D,$8A
+        db	$C0,$07,$FF,$04,$20,$CF,$3A,$02,$E7,$22,$98,$79
+        db	$07,$FF,$0C,$1A,$46,$3F,$1D,$30,$0C,$1A,$47,$3B
+        db	$F9,$87,$01,$0C,$9A,$46,$3B,$F2,$75,$09,$77,$02
+        db	$07,$00,$06,$12,$EF,$7B,$6B,$18,$06,$87,$02,$FA
+        db	$77,$1B,$2C,$05,$19,$0F,$3B,$6B,$C2,$1B,$36,$74
+        db	$2A,$75,$30,$76,$36,$77,$3C,$C0,$72,$40,$78,$BB
+        db	$A8,$9B,$AE,$B4,$B4,$B5,$BA,$92,$C0,$93,$C6,$12
+        db	$CC,$13,$D2,$BF,$D8,$9F,$DE,$10,$EA,$11,$F0,$05
+        db	$18,$06,$28,$44,$FC,$3F,$1D,$55,$E7,$00,$98,$08
+        db	$07,$07,$1F,$1B,$ED,$3F,$1D,$4E,$06,$04,$07,$FF
+        db	$0F,$BA,$42,$CF,$7A,$11,$FA,$78,$07,$05,$0F,$FA
+        db	$42,$C2,$C3,$46,$0F,$47,$F0,$E6,$0C,$1C,$1C,$C9
+        db	$E6,$08,$1C,$1C,$9B,$E6,$04,$1C,$1C,$65,$E6,$02
+        db	$1C,$1C,$48,$E6,$01,$1C,$1C,$25,$3F,$1D,$0D,$3F
+        db	$1C,$EF,$3F,$1D,$70,$C2,$20,$F6,$80,$98,$02,$04
+        db	$1F,$07,$18,$3F,$1D,$30,$02,$3B,$FB,$20,$CF,$3A
+        db	$02,$05,$1A,$06,$02,$3F,$1D,$8A,$3F,$1C,$FB,$ED
+        db	$1A,$48,$1D,$00,$22,$1A,$05,$EE,$1A,$49,$19,$F7
+        db	$75,$09,$04,$FF,$8C,$1A,$41,$C8,$FC,$E4,$00,$9C
+        db	$1B,$31,$3F,$02,$86,$1F,$1B,$22,$CD,$1A,$46,$CE
+        db	$1A,$47,$17,$C0,$C0,$F7,$10,$18,$1A,$0C,$9A,$46
+        db	$C1,$44,$03,$45,$DC,$25,$14,$98,$04,$06,$EC,$1B
+        db	$02,$06,$D4,$05,$17,$3F,$1D,$55,$3F,$1D,$78,$07
+        db	$16,$1F,$1B,$ED,$F7,$10,$18,$0D,$0C,$9A,$46,$44
+        db	$03,$05,$17,$06,$D4,$3B,$E7,$3B,$E8,$3F,$1D,$0D
+        db	$07,$18,$3F,$1D,$30,$07,$1A,$1B,$E1,$0C,$9A,$46
+        db	$C1,$44,$03,$F5,$10,$18,$04,$06,$D4,$1B,$02,$06
+        db	$EC,$05,$17,$3F,$1D,$55,$3F,$1D,$78,$3B,$DB,$3F
+        db	$1C,$EF,$3F,$1D,$70,$C1,$77,$09,$8C,$1A,$47,$C2
+        db	$3F,$1D,$BD,$C1,$3F,$1D,$23,$02,$3B,$C9,$07,$1C
+        db	$1F,$1B,$ED,$0C,$9A,$46,$44,$03,$05,$17,$06,$D4
+        db	$3B,$D2,$3B,$D3,$3F,$1D,$0D,$3F,$1C,$EF,$50,$50
+        db	$50,$50,$50,$44,$03,$1B,$07,$C3,$0F,$77,$CF,$CC
+        db	$1A,$1F,$3F,$1D,$23,$3F,$1D,$17,$07,$1D,$1F,$1B
+        db	$ED,$0C,$9A,$46,$F4,$40,$18,$04,$06,$EC,$1B,$02
+        db	$06,$D4,$05,$17,$44,$03,$3F,$1D,$55,$3F,$1D,$78
+        db	$3B,$2B,$3B,$0B,$44,$7F,$3F,$1D,$2B,$3B,$2C,$07
+        db	$1C,$1B,$D8,$F5,$80,$16,$04,$2A,$07,$17,$CF,$3A
+        db	$02,$01,$17,$77,$0A,$75,$01,$0D,$1A,$46,$0E,$1A
+        db	$47,$86,$01,$85,$00,$3F,$1C,$1C,$17,$3B,$6C,$0C
+        db	$9A,$46,$07,$06,$3B,$1A,$17,$3B,$62,$0C,$9A,$46
+        db	$3B,$12,$07,$08,$3B,$0E,$17,$45,$1F,$0C,$1A,$46
+        db	$44,$60,$61,$07,$18,$3B,$01,$17,$C1,$75,$0A,$50
+        db	$50,$50,$50,$3B,$05,$01,$3B,$02,$01,$17,$44,$0F
+        db	$E4,$0A,$1A,$04,$84,$37,$1B,$02,$84,$30,$CF,$3A
+        db	$02,$17,$CD,$1A,$42,$CE,$1A,$43,$17,$3B,$77,$07
+        db	$04,$EF,$FA,$42,$14,$75,$01,$77,$08,$86,$06,$85
+        db	$00,$E5,$19,$98,$6C,$E6,$F6,$1A,$68,$07,$00,$17
+        db	$44,$7F,$F4,$40,$16,$64,$80,$17,$04,$2C,$CC,$1A
+        db	$15,$06,$02,$07,$FF,$0F,$BA,$42,$CF,$7A,$16,$FA
+        db	$78,$17,$CD,$1A,$44,$CE,$1A,$45,$75,$08,$07,$FF
+        db	$0F,$BA,$44,$1C,$00,$8A,$BB,$A0,$1B,$76,$0D,$0A
+        db	$32,$36,$35,$30,$20,$44,$49,$53,$41,$53,$53,$45
+        db	$4D,$42,$4C,$45,$52,$20,$56,$45,$52,$53,$49,$4F
+        db	$4E,$20,$32,$0A,$00,$B5,$01,$98,$07,$01,$1A,$0B
+        db	$04,$01,$1B,$08,$01,$9A,$04,$04,$FF,$1B,$01,$20
+        db	$75,$09,$8C,$1A,$46,$17
+;==================================================================== 
+;       *ROUTINE TO PROVIDE COMMENT ADDITION
+;       *FACILITY FOR THE IMPROVED 2650
+;       *DISASSEMBLER. J.ROWE 1/ 4/ 1979
+;==================================================================== 
+        BSTA,UN $0286
+        COMI,R0 $0D
+        BCTA,Z  $008A
+        COMI,R0 $09
+        BCTR,Z  $1DE6
+        ZBSR    *0020
+        BCTR,UN $1DD6
+        ZBSR    *$0025
+        LODI,R3 $0F
+        BSTA,UN $0361
+        BCTR,UN $1DD6
+;==================================================================== 
+;        *ROUTINE TO PRINT OUT ASCII MESSAGES
+;        *STORED IN MEMORY. J ROWE APRIL 1979
+;        *USES MESSAGE PRINTING SUBR IN MY
+;        *IMPROVED DISASSEMBLER. ALSO GNUM IN
+;        *PIPBUG. GALL BY GIDF0 AAAA. WHERE
+;        *AAAA IS START OF MESSAGE. NOTE THAT
+;        *MESSAGE MUST END WITH A NULL
+;==================================================================== 
+        ds  $1DF0-$,0               ;fill empty space with zeros
+        org $1DF0     
+        
+        ppsu $60
+        bsta,un $02db
+        bsta,un $1d8a
+        zbrr $0022
 ;==================================================================== 
 ; The High (HY) ROM and Extended (E) function section
 ; HY+E = HEY?
@@ -633,13 +976,11 @@ cloa:
             BCTA,eq find
             COMI,r0 'M'                                     
             BCTA,eq move
-            ;COMI,r0 'I'                                     
-            ;BCTA,eq fill
+            COMI,r0 'R'                                     
+            BCTA,eq lass
             ;COMI,r0 'Z'                                     
             ;BCTA,eq basic
-
-
-
+            COMI,r0 'Y'                                     
 ;add extras here
             bcta,UN ebug 
 ;====================================================================
@@ -656,25 +997,35 @@ help1:      loda,R0 helptxt,R3,+        ;load the character into R0 from the tex
 help2:      lodi,R3 $FF     
 help3:      loda,R0 helptxt1,R3,+       ;load the character into R0 from the text below indexed by R3
             comi,R0 $00                 ;is it zero? (end of string)
+            bcta,EQ help4                ;branch back to pipbug when done
+            bsta,UN cout                ;else, print the character using pipbug serial output
+            bctr,UN help3
+help4:      lodi,R3 $FF     
+help5:      loda,R0 helptxt2,R3,+       ;load the character into R0 from the text below indexed by R3
+            comi,R0 $00                 ;is it zero? (end of string)
             bcta,EQ mbug                ;branch back to pipbug when done
             bsta,UN cout                ;else, print the character using pipbug serial output
-            bctr,UN help3              
+            bctr,UN help5                          
 helptxt:    db "PIPBUG Commands:",CR,LF,LF              ;16
-            db "Alter Memory aaaa  Aaaaa<CR>",CR,LF     ;28
-            db "Set Breakpoint n   Bn aaaa<CR>",CR,LF   ;30
-            db "Clear Breakpoint n Cn<CR>",CR,LF        ;25
-            db "Dump to tape       Daaaa bbbb<CR>",CR,LF        ;25
-            db "Goto Address aaaa  Gaaaa<CR>",CR,LF     ;28         
-            db "Load Hex File      L<CR>",CR,LF         ;24
-            db "See Register Rn    Sn<CR>",CR,LF,LF,$00     ;25     =156
+            db "Alter Memory aaaa   Aaaaa<CR>",CR,LF     ;28
+            db "Set Breakpoint n    Bn aaaa<CR>",CR,LF   ;30
+            db "Clear Breakpoint n  Cn<CR>",CR,LF        ;25
+            db "Dump to tape        Daaaa bbbb<CR>",CR,LF        ;25
+            db "Goto Address aaaa   Gaaaa<CR>",CR,LF     ;28         
+            db "Load Hex File       L<CR>",CR,LF         ;24
+            db "See Register Rn     Sn<CR>",CR,LF,LF,$00     ;25     =156
             
 helptxt1:   db "Utility Routines:",CR,LF,LF
-            db "Find Hex String    Faaaa bbbb xxyy<CR>",CR,LF
-            db "Find Hex Value     Xaaaa bbbb xx<CR>",CR,LF
-            db "Hex List           Haaaa bbbb<CR>",CR,LF   
-            db "Move               Maaaa bbbb cccc<CR>",CR,LF
+            db "Find Hex String     Faaaa bbbb xxyy<CR>",CR,LF
+            db "Find Hex Value      Xaaaa bbbb xx<CR>",CR,LF
+            db "Hex List            Haaaa bbbb<CR>",CR,LF   
+            db "Move                Maaaa bbbb cccc<CR>",CR,LF
 ;            db "Fill Memory        Iaaaa bbbb xx<CR>",CR,LF,$00
+            db "2650 Line Assembler R<CR>",CR,LF,$00
 
+helptxt2:
+            db "Disassembler        G1B00 aaaa bbbb xx<CR>",CR,LF
+            db "Print ASCII         G1DF0 aaaa<CR>",CR,LF,$00
 ;Official Utility EPROM Label Equates-------------------------------------
 ;GPAR            equ $3C07        ;(R/w) EPROM subroutine
 ;INCRT           equ $3C2A        ;(R/w) EPROM subroutine

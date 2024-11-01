@@ -36,6 +36,8 @@
 0000              ;   
 0000              
 0000              ;2650 specific equates
+0000 = 00000000   Z           equ  0
+0000 = 00000001   P           equ  1
 0000 = 00000000   EQ          equ  0
 0000 = 00000001   GT          equ  1
 0000 = 00000002   LT          equ  2
@@ -604,18 +606,356 @@
 03F8 9C001D                   bcfa,eq     ebug
 03FB 1F03B5                   bcta,un     load           
 03FE 0000                     db  $00,$00
+ 
 0400              ;==================================================================== 
-0400              ; The High (HY) ROM and Extended (E) function section
-0400              ; HY+E = HEY?
-0400              ;==================================================================== 
-0400 000000000000             ds  $3000-$,0               ;fill empty space with zeros
+0400              ; 2650 Line Assembler - Improved
+0400              ; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+0400              ; ELECTRONICS Austraila, .February, 1980
+0400              ;===================================================================                    
+0400              ;temp remove
+0400              ;            ds  $1590-$,0               ;fill empty space with zeros
+0400              ;            org $1590
+0400              ; lass:
+0400                                      ; bsta,un       crlf                           ;15C0 : 3F 00 8A         "?  "   [3]             
+0400                                      ; bcta,un       L1600                           ;15C3 : 1F 16 00                "   "   [3]                           
+
+0400              ; ;modification for improved error handling
+0400                          ; ds  $159E-$,0               ;fill empty space with zeros
+0400                          ; org $159E
+0400              
+0400                          ; db $00,$00
+0400              
+0400              ; L15A0:            ;load and store subr
+0400                          ; loda,r1 $040D
+0400                          ; loda,r2 $040e
+0400                          ; strr,r1 $159E
+0400                          ; strr,r2 $159F
+0400                          ; retc,un
+0400              ; L15AB:            ;load addr subr
+0400                          ; lodr,r1 $159E
+0400                          ; lodr,r2 $159F
+0400                          ; retc,un
+0400              ; L15B0:            ;new error handling routine
+0400                          ; cpsl $FF
+0400                          ; cpsu $0F
+0400                          ; lodi,r1 $08
+0400                          ; loda,r1 *$15c3
+0400                          ; zbsr *$0020
+0400                          ; bdrr,r1 $15b6
+0400                          ; zbsr *$0025
+0400                          ; bstr,un $15ab
+0400                          ; bcta,un $160c
+0400              ; L15C4:            ;error message
+0400                          ; db $52,$4f,$52
+0400                          ; db $52,$45,$20
+0400                          ; db $20,$3F                        
+0400              
+0400               ;====================================================================           
+0400 000000000000            ds  $15C0-$,0               ;fill empty space with zeros
+15C0                         org $15C0
+15C0 3F008A       lass:       bsta,UN crlf
+15C3 1F1600                  bcta,UN L1600
+15C6 000000000000            ds  $15CC-$,0               ;fill empty space with zeros
+15CC                         org $15CC
+15CC              
+15CC F40C1802             db $F4,$0C,$18,$02
+15D0 451F6D042A1F     db  $45,$1F,$6D,$04,$2A,$1F,$17,$5B,$F4,$04,$98,$0F,$3F,$1A,$95,$CE
+15E0 840D3B0FEF04     db  $84,$0D,$3B,$0F,$EF,$04,$29,$9A,$25,$1B,$71,$3B,$F0,$1B,$1D,$02
+15F0 691ACD0D040D     db  $69,$1A,$CD,$0D,$04,$0D,$0E,$04,$0E,$DA,$02,$D9,$00,$1F,$00,$A4
+1600              L1600: ;$1600
+1600                      ;db $20,$07,$14,$CF,$5A,$40,$5B,$7B,$3F,$1A,$55,$C0
+1600 200714CF5A40     db  $20,$07,$14,$CF,$5A,$40,$5B,$7B,$3F,$1A,$55,$C0
+160C                      
+160C                      
+160C              ;==================================================================== 
+160C              ; 2650 Line Assembler - Improved
+160C              ; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+160C              ; ELECTRONICS Austraila, .February, 1980
+160C              ;=================================================================== 
+160C              ; *MODIFIED START SEQUENCE
+160C                  ; BSTR,UN *$15FE      ; 160C 3BF0           ;         
+160C                  ; BSTA,UN $15A0       ; 160E 3F15A0         ;  ;Go to new subr
+160C                  ; BSTR,UN *$15EF      ; 1611 3BDC                   ; 
+160C                  ; LODZ    r2          ; 1613 02                     ; 
+160C                  ; STRZ    r1          ; 1614 C1                     ; 
+160C                  ; BSTR,UN *$15EF      ; 1615 3BD8                   ; 
+160C                  ; LODI,R0 $2E         ; 1617 042E                   ; 
+160C                  ; BSTA,UN $02B4       ; 1619 3F02B4         ; 
+160C                  ; BSTR,UN *$15F1      ; 161C 3BD3                   ; 
+160C              ;=================================================================== 
+160C              
+160C              
+160C              ;       0   1   2   3   4   5   6   7   8   9  A   B   C    D   E   F
+160C              ;$160c                                              
+160C 3BF00D04        db $3B,$F0,$0D,$04      ;ok comment ou
+1610 0D3BDC0D040E         db $0D,$3B,$DC,$0D,$04,$0E,$3B,$D7,$04,$2E,$BB,$A0,$3B,$D3                      ;ok comment out for improved line assembler 
+161E              ;$161e                                                      
+161E 0C1A                                                                     db $0C,$1A  ;ok
+1620              ;$1620
+1620                      ;db $02,$E4,$2A,$18,$69,$E4,$40,$98,$3C,$0F,$3A,$02,$A4,$30,$1E,$30     ; modified
+1620              ;$162F
+1620 02E42A1869E4     db $02,$E4,$2A,$18,$69,$E4,$40,$98,$3C,$0F,$3A,$02,$A4,$30,$1E,$02  ;ok comment out for improved line assembler
+1630 50C3E70919F9     db  $50,$C3,$E7,$09,$19,$F9,$D3,$06,$01,$0F,$7A,$40,$CC,$04,$0F,$C1
+1640 0F7A41CC0410     db  $0F,$7A,$41,$CC,$04,$10,$61,$18,$1A,$0C,$84,$0F,$CF,$7A,$40,$0E
+1650 E40FCF7A410C     db  $E4,$0F,$CF,$7A,$41,$0C,$04,$0D,$CC,$84,$0F,$0C,$04,$0E,$CE,$E4
+1660 0F1B56070220     db  $0F,$1B,$56,$07,$02,$20,$CC,$04,$2A,$3B,$BE,$3F,$17,$7A,$CC,$04
+1670 11609A2B440F     db  $11,$60,$9A,$2B,$44,$0F,$1C,$00,$22,$F4,$02,$98,$9C,$3B,$AA,$0F
+1680 7A02C20F3A02     db  $7A,$02,$C2,$0F,$3A,$02,$EF,$04,$29,$9E,$16,$0E,$E2,$18,$FB,$CC
+1690 840D023F15F3     db  $84,$0D,$02,$3F,$15,$F3,$C2,$1B,$6A,$15,$D8,$C0,$C0,$1A,$95,$CE
+16A0 840DE4109A21     db  $84,$0D,$E4,$10,$9A,$21,$87,$01,$3F,$17,$6B,$0F,$7A,$02,$E4,$40
+16B0              
+16B0                  ;$16B0
+16B0                      ;db $99,$0A,$3F,$17,$7A,$84,$10,$18,$05,$1F,$2B  ;modified
+16B0              ;$16BA                                          
+16B0 990A3F177A84     db $99,$0A,$3F,$17,$7A,$84,$10,$18,$05,$1F,$02  ;ok comment out for improved line assembler                                
+16BB              ;$16BB                                          
+16BB 503BDF4603                                                   db $50,$3B,$DF,$46,$03  ;ok
+16C0 0C840D62CC84     db  $0C,$84,$0D,$62,$CC,$84,$0D,$3B,$CB,$0C,$04,$11,$F4,$01,$1C,$16
+16D0 0EF4021C1722     db  $0E,$F4,$02,$1C,$17,$22,$3B,$D1,$0F,$7A,$02,$E4,$30,$9A,$1B,$87
+16E0 0105FFED37CF     db  $01,$05,$FF,$ED,$37,$CF,$18,$06,$E5,$04,$1A,$77,$1B,$CC,$D1,$D1
+16F0 D1D1D16D042A     db  $D1,$D1,$D1,$6D,$04,$2A,$C9,$FC,$1B,$5C,$E4,$40,$98,$24,$0F,$3A    
+1700                  ;$1700
+1700                      ;db $02,$A4,$30,$1E,$05  ;modified
+1700              ;$1704
+1700 02A4301E02       db $02,$A4,$30,$1E,$02  ;ok comment out for improved line assembler
+1705              ;$1705                  
+1705 50C3E70919F9                         db $50,$C3,$E7,$09,$19,$F9,$D3,$0F,$7A,$40,$C1  ;ok
+1710 0F7A41C20C04     db  $0F,$7A,$41,$C2,$0C,$04,$0D,$CF,$7A,$40,$0C,$04,$0E,$CF,$7A,$41
+1720 1BB73F1A950C     db  $1B,$B7,$3F,$1A,$95,$0C,$04,$11,$F4,$08,$18,$AD,$F4,$04,$98,$24
+1730 7709A601A500     db  $77,$09,$A6,$01,$A5,$00,$77,$01,$AE,$04,$0E,$AD,$04,$0D,$75,$08  
+1740              ;$1740
+1740                      ;db $18,$0D,$85,$01,$9C,$46  ;modified
+1740              ;$1745                    
+1740 180D85019C02         db $18,$0D,$85,$01,$9C,$02  ;ok comment out for improved line assembler
+1746 50F6C098FA46                             db $50,$F6,$C0,$98,$FA,$46,$7F,$1B,$05,$04  ;ok         
+1750 C04298F16E04     db  $C0,$42,$98,$F1,$6E,$04,$2A,$1B,$0A,$15,$CC,$CD,$84,$0D,$02,$3F
+1760 15F3C2CE840D     db  $15,$F3,$C2,$CE,$84,$0D,$3B,$F8,$1F,$16,$0E,$04,$20,$FB,$00,$EF
+1770 3A02187BEF04     db  $3A,$02,$18,$7B,$EF,$04,$29,$9A,$CC,$17,$06,$FC,$A7,$01,$0F,$3A
+1780 02EBF29A0DE4     db  $02,$EB,$F2,$9A,$0D,$E4,$30,$1A,$09,$CE,$79,$40,$DA,$70,$87,$01
+1790 1B070420CE79     db  $1B,$07,$04,$20,$CE,$79,$40,$DA,$7B,$CF,$04,$28,$75,$01,$77,$08
+17A0 051706D4CD04     db  $05,$17,$06,$D4,$CD,$04,$0F,$CE,$04,$10,$07,$FF,$0F,$A4,$0F,$1C
+17B0              
+17B0              ;$17B0
+17B0 02                   db $02;ok comment out for improved line assembler
+17B1                  ;db $B1  ;modified
+17B1 50EF7A3C1806         db $50,$EF,$7A,$3C,$18,$06,$86,$06,$85,$00,$1B,$67,$E7,$03,$1A  ;ok
+17C0 6B0FA40FC20F     db  $6B,$0F,$A4,$0F,$C2,$0F,$A4,$0F,$0F,$04,$28,$75,$08,$17,$00,$2C
+17D0 2B2D232A5230     db  $2B,$2D,$23,$2A,$52,$30,$20,$20,$00,$F0,$52,$31,$20,$20,$01,$F0
+17E0 5232202002F0     db  $52,$32,$20,$20,$02,$F0,$52,$33,$20,$20,$03,$F0,$50,$20,$20,$20
+17F0 01F05A202020     db  $01,$F0,$5A,$20,$20,$20,$00,$F0,$4E,$20,$20,$20,$02,$F0,$4C,$54
+1800 202002F04551     db  $20,$20,$02,$F0,$45,$51,$20,$20,$00,$F0,$47,$54,$20,$20,$01,$F0
+1810 554E202003F0     db  $55,$4E,$20,$20,$03,$F0,$45,$4E,$44,$20,$00,$80,$4F,$52,$47,$20
+1820 008141534349     db  $00,$81,$41,$53,$43,$49,$00,$82,$4C,$4F,$44,$5A,$00,$01,$4C,$4F
+1830 444904024C4F     db  $44,$49,$04,$02,$4C,$4F,$44,$52,$08,$04,$4C,$4F,$44,$41,$03,$08
+1840 5354525AC001     db  $53,$54,$52,$5A,$C0,$01,$53,$54,$52,$52,$C8,$04,$53,$54,$52,$41
+1850 CC08494F525A     db  $CC,$08,$49,$4F,$52,$5A,$60,$01,$49,$4F,$52,$49,$64,$02,$49,$4F
+1860 52526804494F     db  $52,$52,$68,$04,$49,$4F,$52,$41,$6C,$08,$41,$4E,$44,$5A,$40,$01
+1870 414E44494402     db  $41,$4E,$44,$49,$44,$02,$41,$4E,$44,$52,$48,$04,$41,$4E,$44,$41
+1880 4C08454F525A     db  $4C,$08,$45,$4F,$52,$5A,$20,$01,$45,$4F,$52,$49,$24,$02,$45,$4F
+1890 52522804454F     db  $52,$52,$28,$04,$45,$4F,$52,$41,$2C,$08,$42,$43,$54,$52,$18,$04
+18A0 424354411C0C     db  $42,$43,$54,$41,$1C,$0C,$42,$43,$46,$52,$98,$04,$42,$43,$46,$41
+18B0 9C0C434F4D5A     db  $9C,$0C,$43,$4F,$4D,$5A,$E0,$01,$43,$4F,$4D,$49,$E4,$02,$43,$4F
+18C0 4D52E804434F     db  $4D,$52,$E8,$04,$43,$4F,$4D,$41,$EC,$08,$41,$44,$44,$5A,$80,$01
+18D0 414444498402     db  $41,$44,$44,$49,$84,$02,$41,$44,$44,$52,$88,$04,$41,$44,$44,$41
+18E0 8C085355425A     db  $8C,$08,$53,$55,$42,$5A,$A0,$01,$53,$55,$42,$49,$A4,$02,$53,$55
+18F0 4252A8045355     db  $42,$52,$A8,$04,$53,$55,$42,$41,$AC,$08,$52,$45,$54,$43,$14,$01
+1900 524554453401     db  $52,$45,$54,$45,$34,$01,$42,$53,$54,$52,$38,$04,$42,$53,$54,$41
+1910 3C0C42534652     db  $3C,$0C,$42,$53,$46,$52,$B8,$04,$42,$53,$46,$41,$BC,$0C,$52,$52
+1920 522050015252     db  $52,$20,$50,$01,$52,$52,$4C,$20,$D0,$01,$43,$50,$53,$55,$74,$12
+1930 4350534C7512     db  $43,$50,$53,$4C,$75,$12,$50,$50,$53,$55,$76,$12,$50,$50,$53,$4C
+1940 771242524E52     db  $77,$12,$42,$52,$4E,$52,$58,$04,$42,$52,$4E,$41,$5C,$0C,$42,$49
+1950 5252D8044249     db  $52,$52,$D8,$04,$42,$49,$52,$41,$DC,$0C,$42,$44,$52,$52,$F8,$04
+1960 42445241FC0C     db  $42,$44,$52,$41,$FC,$0C,$42,$53,$4E,$52,$78,$04,$42,$53,$4E,$41
+1970 7C0C4E4F5020     db  $7C,$0C,$4E,$4F,$50,$20,$C0,$11,$48,$41,$4C,$54,$40,$11,$54,$4D
+1980 4920F4025752     db  $49,$20,$F4,$02,$57,$52,$54,$44,$F0,$01,$52,$45,$44,$44,$70,$01
+1990 57525443B001     db  $57,$52,$54,$43,$B0,$01,$52,$45,$44,$43,$30,$01,$57,$52,$54,$45
+19A0 D40252454445     db  $D4,$02,$52,$45,$44,$45,$54,$02,$5A,$42,$53,$52,$BB,$10,$5A,$42
+19B0 52529B105450     db  $52,$52,$9B,$10,$54,$50,$53,$55,$B4,$12,$54,$50,$53,$4C,$B5,$12
+19C0 4C5053559211     db  $4C,$50,$53,$55,$92,$11,$4C,$50,$53,$4C,$93,$11,$53,$50,$53,$55
+19D0 12115350534C     db  $12,$11,$53,$50,$53,$4C,$13,$11,$42,$53,$58,$41,$BF,$1C,$42,$58
+19E0 41209F1C4441     db  $41,$20,$9F,$1C,$44,$41,$52,$20,$94,$01,$4C,$44,$50,$4C,$10,$1C
+19F0 5354504C111C     db  $53,$54,$50,$4C,$11,$1C,$44,$41,$54,$41,$00,$84,$00,$00,$00,$00
+1A00 0000             db  $00,$00
+           
+1A02 000000000000             ds  $1a55-$,0               ;fill empty space with zeros
+1A55                          org $1a55
+1A55              ;       0   1   2   3   4   5   6   7   8   9  A   B   C    D   E   F
+1A55 051A066C3F00                             db $05,$1A,$06,$6C,$3F,$00,$A4,$07,$FF,$0F,$A4      ;ok
+1A60              ;$1a60
+1A60                  ;db $0D,$18,$04,$BB,$A0,$1B,$77,$05,$04,$06,$40,$17,$32,$36,$35,$30 ;ok
+1A60                      ;db $20,$4C,$49,$4E,$45,$20,$41,$53,$53,$45,$4D,$42,$4C,$45,$52,$0D     ;ok
+1A60                      ;db $0A,$0A,$00,$00,$A4,$30,$1A,$0A,$E4,$0A,$16,$A4,$07,$1A,$03,$E4     ;ok
+1A60 0D1804BBA01B     db  $0D,$18,$04,$BB,$A0,$1B,$77,$05,$04,$06,$40,$17,$32,$36,$35,$30
+1A70 204C494E4520     db  $20,$4C,$49,$4E,$45,$20,$41,$53,$53,$45,$4D,$42,$4C,$45,$52,$0D
+1A80 0A0A0000A430     db  $0A,$0A,$00,$00,$A4,$30,$1A,$0A,$E4,$0A,$16,$A4,$07,$1A,$03,$E4
+1A90              ;$1a90
+1A90                      ;db $10,$16,$1F,$94  ;modified
+1A90              ;$1a93
+1A90 10161F02         db  $10,$16,$1F,$02 ;comment out for improved line assembler
+1A94 5020C1C2CC04                     db $50,$20,$C1,$C2,$CC,$04,$12,$08,$FC,$15,$EF,$04  ;ok
+1AA0 29140F7A02E4         db $29,$14,$0F,$7A,$02,$E4,$20,$98,$02,$DB,$70,$3B,$57,$D2,$D2,$D2      ;ok
+1AB0 D2CE042846F0         db $D2,$CE,$04,$28,$46,$F0,$62,$C2,$D1,$D1,$D1,$D1,$45,$F0,$08,$F2      ;ok
+1AC0              ;$1ac0
+1AC0 440F61C10401         db $44,$0F,$61,$C1,$04,$01,$C8,$D1,$DB,$54,$0A,$0D,$5E
+1ACD              ;$1acd    
+1ACD 0700E7          db $07,$00,$E7                                                                                                               ;ok comment ou
+1AD0 3C1C001D3F02         db $3C,$1C,$00,$1D,$3F,$02,$86,$E4,$7F,$98,$0A,$03,$18,$71,$0F,$5A      ;ok comment out for improved line assembler
+1AE0 02BBA01B6A05         db $02,$BB,$A0,$1B,$6A,$05,$03,$ED,$7A,$C9,$18,$09,$F9,$79,$CF,$7A      ;ok comment out for improved line assembler
+1AF0 02BBA0DB5ACF         db $02,$BB,$A0,$DB,$5A,$CF,$04,$29,$CD,$04,$2A,$07,$00,$9B,$A5          ;ok comment out for improved line assembler
+1AFF              
+1AFF              ;==================================================================== 
+1AFF              ; 2650 Line Assembler - Improved
+1AFF              ; by A. M. KOLLOSCHE Higginbotham Avenus. Armidals NSW 2350 
+1AFF              ; ELECTRONICS Austraila, .February, 1980
+1AFF              ;===================================================================     
+1AFF                  
+1AFF              ;modified line input routine                                                                                                            ; ;
+1AFF              ; L1ACD:                                             ; 1ACD                                                             
+1AFF                              ; lodi,r3       $00                                        ; 1ACD : 07 00                          "  " [2]
+1AFF              ; L1ACF:                                             ; 1ACF                                                             
+1AFF                              ; comi,r3       $3C                                      ; 1ACF : E7 3C                    " <" [2]
+1AFF                              ; ;bcta,eq      L15B0                                      ; 1AD1 : 1C 15 B0       "   "        [3]
+1AFF                      ; db $1c,$d3,$b0
+1AFF                              ; bsta,un       $0286                                      ; 1AD4 : 3F 02 86       "?  "        [3]
+1AFF                              ; comi,r0       $7F                                      ; 1AD7 : E4 7F                    "  " [2]
+1AFF              ; X1AD9:                                             ; 1AD9                                                             
+1AFF                              ; bcfr,eq       L1AE6                                      ; 1AD9 : 98 0B                   "  "        [3]
+1AFF                              ; lodz  r3                                         ; 1ADB : 03                      " "         [2]
+1AFF                              ; bctr,eq       L1ACF                                      ; 1ADC : 18 71                   " q"        [3]
+1AFF                              ; lodi,r0       $08                                      ; 1ADE : 04 08             "  "        [2]
+1AFF                              ; zbsr  *$0020                  ;INFO: indirect jump     ; 1AE0 : BB A0             "  "        [3]
+1AFF                              ; subi,r3       $01                                      ; 1AE2 : A7 01             "  "        [2]
+1AFF                              ; bctr,un       L1ACF                                      ; 1AE4 : 1B 69                   " i"        [3]
+1AFF                                                                                                                              ; ; ;
+1AFF              ; L1AE6:                                             ; 1AE6                                                             
+1AFF                              ; lodi,r1       $03                                      ; 1AE6 : 05 03             "  "        [2]
+1AFF              ; L1AE8:                                             ; 1AE8                                                             
+1AFF                              ; coma,r1       $1AC9                                      ; 1AE8 : ED 1A C9       "   "        [4]
+1AFF                              ; bctr,eq       L1AF6                                      ; 1AEB : 18 09                          "  " [3]
+1AFF                              ; bdrr,r1       L1AE8                                      ; 1AED : F9 79                          " y" [3]
+1AFF                              ; stra,r3       $1A02                                      ; 1AEF : CF 1A 02        "   "       [4]
+1AFF                              ; zbsr  *$0020                  ;INFO: indirect jump     ; 1AF2 : BB A0                    "  " [3]
+1AFF                              ; birr,r3       L1ACF                                      ; 1AF4 : DB 59                          " Y" [3]
+1AFF                              ; L1AF6:                                             ; 1AF6                                                             
+1AFF                              ; stra,r3       $0429                                      ; 1AF6 : CF 04 29        "  )"       [4]
+1AFF                              ; stra,r1       $042A                                     ; 1AF9 : CD 04 2A         "  *"       [4]
+1AFF                              ; lodi,r3       $00                                        ; 1AFC : 07 00                          "  " [2]
+1AFF                              ; zbrr  *$0025                  ;INFO: indirect jump     ; 1AFE : 9B A5                    "  " [3]             
+1AFF              
+1AFF              ;==================================================================== 
+1AFF              ; An improved 2650 disassembler
+1AFF              ; by JAMIESON ROWE 
+1AFF              ; ELECTRONICS Australia, August, 1979
+1AFF              ;==================================================================== 
+1AFF 00                   ds  $1B00-$,0               ;fill empty space with zeros
+1B00                      org $1B00
+1B00 766077023F02         db      $76,$60,$77,$02,$3F,$02,$DB,$3F,$1C,$1C,$3B,$F9
+1B0C CD1A48CE1A49         db      $CD,$1A,$48,$CE,$1A,$49,$E9,$AB,$19,$07,$1E,$02
+1B18 50EAAA99FA3B         db      $50,$EA,$AA,$99,$FA,$3B,$E6,$CE,$1A,$40,$08,$FC
+1B24 CC1A41180805         db      $CC,$1A,$41,$18,$08,$05,$1D,$06,$9E,$3F,$1D,$8A
+1B30 C007FF0420CF         db      $C0,$07,$FF,$04,$20,$CF,$3A,$02,$E7,$22,$98,$79
+1B3C 07FF0C1A463F         db      $07,$FF,$0C,$1A,$46,$3F,$1D,$30,$0C,$1A,$47,$3B
+1B48 F987010C9A46         db      $F9,$87,$01,$0C,$9A,$46,$3B,$F2,$75,$09,$77,$02
+1B54 07000612EF7B         db      $07,$00,$06,$12,$EF,$7B,$6B,$18,$06,$87,$02,$FA
+1B60 771B2C05190F         db      $77,$1B,$2C,$05,$19,$0F,$3B,$6B,$C2,$1B,$36,$74
+1B6C 2A7530763677         db      $2A,$75,$30,$76,$36,$77,$3C,$C0,$72,$40,$78,$BB
+1B78 A89BAEB4B4B5         db      $A8,$9B,$AE,$B4,$B4,$B5,$BA,$92,$C0,$93,$C6,$12
+1B84 CC13D2BFD89F         db      $CC,$13,$D2,$BF,$D8,$9F,$DE,$10,$EA,$11,$F0,$05
+1B90 18062844FC3F         db      $18,$06,$28,$44,$FC,$3F,$1D,$55,$E7,$00,$98,$08
+1B9C 07071F1BED3F         db      $07,$07,$1F,$1B,$ED,$3F,$1D,$4E,$06,$04,$07,$FF
+1BA8 0FBA42CF7A11         db      $0F,$BA,$42,$CF,$7A,$11,$FA,$78,$07,$05,$0F,$FA
+1BB4 42C2C3460F47         db      $42,$C2,$C3,$46,$0F,$47,$F0,$E6,$0C,$1C,$1C,$C9
+1BC0 E6081C1C9BE6         db      $E6,$08,$1C,$1C,$9B,$E6,$04,$1C,$1C,$65,$E6,$02
+1BCC 1C1C48E6011C         db      $1C,$1C,$48,$E6,$01,$1C,$1C,$25,$3F,$1D,$0D,$3F
+1BD8 1CEF3F1D70C2         db      $1C,$EF,$3F,$1D,$70,$C2,$20,$F6,$80,$98,$02,$04
+1BE4 1F07183F1D30         db      $1F,$07,$18,$3F,$1D,$30,$02,$3B,$FB,$20,$CF,$3A
+1BF0 02051A06023F         db      $02,$05,$1A,$06,$02,$3F,$1D,$8A,$3F,$1C,$FB,$ED
+1BFC 1A481D00221A         db      $1A,$48,$1D,$00,$22,$1A,$05,$EE,$1A,$49,$19,$F7
+1C08 750904FF8C1A         db      $75,$09,$04,$FF,$8C,$1A,$41,$C8,$FC,$E4,$00,$9C
+1C14 1B313F02861F         db      $1B,$31,$3F,$02,$86,$1F,$1B,$22,$CD,$1A,$46,$CE
+1C20 1A4717C0C0F7         db      $1A,$47,$17,$C0,$C0,$F7,$10,$18,$1A,$0C,$9A,$46
+1C2C C1440345DC25         db      $C1,$44,$03,$45,$DC,$25,$14,$98,$04,$06,$EC,$1B
+1C38 0206D405173F         db      $02,$06,$D4,$05,$17,$3F,$1D,$55,$3F,$1D,$78,$07
+1C44 161F1BEDF710         db      $16,$1F,$1B,$ED,$F7,$10,$18,$0D,$0C,$9A,$46,$44
+1C50 03051706D43B         db      $03,$05,$17,$06,$D4,$3B,$E7,$3B,$E8,$3F,$1D,$0D
+1C5C 07183F1D3007         db      $07,$18,$3F,$1D,$30,$07,$1A,$1B,$E1,$0C,$9A,$46
+1C68 C14403F51018         db      $C1,$44,$03,$F5,$10,$18,$04,$06,$D4,$1B,$02,$06
+1C74 EC05173F1D55         db      $EC,$05,$17,$3F,$1D,$55,$3F,$1D,$78,$3B,$DB,$3F
+1C80 1CEF3F1D70C1         db      $1C,$EF,$3F,$1D,$70,$C1,$77,$09,$8C,$1A,$47,$C2
+1C8C 3F1DBDC13F1D         db      $3F,$1D,$BD,$C1,$3F,$1D,$23,$02,$3B,$C9,$07,$1C
+1C98 1F1BED0C9A46         db      $1F,$1B,$ED,$0C,$9A,$46,$44,$03,$05,$17,$06,$D4
+1CA4 3BD23BD33F1D         db      $3B,$D2,$3B,$D3,$3F,$1D,$0D,$3F,$1C,$EF,$50,$50
+1CB0 50505044031B         db      $50,$50,$50,$44,$03,$1B,$07,$C3,$0F,$77,$CF,$CC
+1CBC 1A1F3F1D233F         db      $1A,$1F,$3F,$1D,$23,$3F,$1D,$17,$07,$1D,$1F,$1B
+1CC8 ED0C9A46F440         db      $ED,$0C,$9A,$46,$F4,$40,$18,$04,$06,$EC,$1B,$02
+1CD4 06D405174403         db      $06,$D4,$05,$17,$44,$03,$3F,$1D,$55,$3F,$1D,$78
+1CE0 3B2B3B0B447F         db      $3B,$2B,$3B,$0B,$44,$7F,$3F,$1D,$2B,$3B,$2C,$07
+1CEC 1C1BD8F58016         db      $1C,$1B,$D8,$F5,$80,$16,$04,$2A,$07,$17,$CF,$3A
+1CF8 020117770A75         db      $02,$01,$17,$77,$0A,$75,$01,$0D,$1A,$46,$0E,$1A
+1D04 47860185003F         db      $47,$86,$01,$85,$00,$3F,$1C,$1C,$17,$3B,$6C,$0C
+1D10 9A4607063B1A         db      $9A,$46,$07,$06,$3B,$1A,$17,$3B,$62,$0C,$9A,$46
+1D1C 3B1207083B0E         db      $3B,$12,$07,$08,$3B,$0E,$17,$45,$1F,$0C,$1A,$46
+1D28 44606107183B         db      $44,$60,$61,$07,$18,$3B,$01,$17,$C1,$75,$0A,$50
+1D34 5050503B0501         db      $50,$50,$50,$3B,$05,$01,$3B,$02,$01,$17,$44,$0F
+1D40 E40A1A048437         db      $E4,$0A,$1A,$04,$84,$37,$1B,$02,$84,$30,$CF,$3A
+1D4C 0217CD1A42CE         db      $02,$17,$CD,$1A,$42,$CE,$1A,$43,$17,$3B,$77,$07
+1D58 04EFFA421475         db      $04,$EF,$FA,$42,$14,$75,$01,$77,$08,$86,$06,$85
+1D64 00E519986CE6         db      $00,$E5,$19,$98,$6C,$E6,$F6,$1A,$68,$07,$00,$17
+1D70 447FF4401664         db      $44,$7F,$F4,$40,$16,$64,$80,$17,$04,$2C,$CC,$1A
+1D7C 15060207FF0F         db      $15,$06,$02,$07,$FF,$0F,$BA,$42,$CF,$7A,$16,$FA
+1D88 7817CD1A44CE         db      $78,$17,$CD,$1A,$44,$CE,$1A,$45,$75,$08,$07,$FF
+1D94 0FBA441C008A         db      $0F,$BA,$44,$1C,$00,$8A,$BB,$A0,$1B,$76,$0D,$0A
+1DA0 323635302044         db      $32,$36,$35,$30,$20,$44,$49,$53,$41,$53,$53,$45
+1DAC 4D424C455220         db      $4D,$42,$4C,$45,$52,$20,$56,$45,$52,$53,$49,$4F
+1DB8 4E20320A00B5         db      $4E,$20,$32,$0A,$00,$B5,$01,$98,$07,$01,$1A,$0B
+1DC4 04011B08019A         db      $04,$01,$1B,$08,$01,$9A,$04,$04,$FF,$1B,$01,$20
+1DD0 75098C1A4617         db      $75,$09,$8C,$1A,$46,$17
+1DD6              ;==================================================================== 
+1DD6              ;       *ROUTINE TO PROVIDE COMMENT ADDITION
+1DD6              ;       *FACILITY FOR THE IMPROVED 2650
+1DD6              ;       *DISASSEMBLER. J.ROWE 1/ 4/ 1979
+1DD6              ;==================================================================== 
+1DD6 3F0286               BSTA,UN $0286
+1DD9 E40D                 COMI,R0 $0D
+1DDB 1C008A               BCTA,Z  $008A
+1DDE E409                 COMI,R0 $09
+1DE0 1804                 BCTR,Z  $1DE6
+1DE2 BB94                 ZBSR    *0020
+1DE4 1B70                 BCTR,UN $1DD6
+1DE6 BBA5                 ZBSR    *$0025
+1DE8 070F                 LODI,R3 $0F
+1DEA 3F0361               BSTA,UN $0361
+1DED 1B67                 BCTR,UN $1DD6
+1DEF              ;==================================================================== 
+1DEF              ;        *ROUTINE TO PRINT OUT ASCII MESSAGES
+1DEF              ;        *STORED IN MEMORY. J ROWE APRIL 1979
+1DEF              ;        *USES MESSAGE PRINTING SUBR IN MY
+1DEF              ;        *IMPROVED DISASSEMBLER. ALSO GNUM IN
+1DEF              ;        *PIPBUG. GALL BY GIDF0 AAAA. WHERE
+1DEF              ;        *AAAA IS START OF MESSAGE. NOTE THAT
+1DEF              ;        *MESSAGE MUST END WITH A NULL
+1DEF              ;==================================================================== 
+1DEF 00                   ds  $1DF0-$,0               ;fill empty space with zeros
+1DF0                      org $1DF0     
+1DF0                      
+1DF0 7660                 ppsu $60
+1DF2 3F02DB               bsta,un $02db
+1DF5 3F1D8A               bsta,un $1d8a
+1DF8 9B22                 zbrr $0022
+1DFA              
+1DFA                      
+1DFA              ;==================================================================== 
+1DFA              ; The High (HY) ROM and Extended (E) function section
+1DFA              ; HY+E = HEY?
+1DFA              ;==================================================================== 
+1DFA 000000000000             ds  $3000-$,0               ;fill empty space with zeros
 3000                          org $3000               
 3000              ;==================================================================== 
 3000              ; ran out of space in the command handler function 'mbug', continue here
 3000              ; display 'help' when '?' is entered 
 3000               ;====================================================================           
 3000 E43F          mbug1:     comi,R0 '?'
-3002 1C301C                   bcta,EQ help
+3002 1C3023                   bcta,EQ help
 3005 E448                     COMI,r0 'H'                                     
 3007 1C3C50                   BCTA,eq hexlist   
 300A E446                     COMI,r0 'F'                                     
@@ -624,66 +964,78 @@
 3011 1C3C8A                   BCTA,eq find
 3014 E44D                     COMI,r0 'M'                                     
 3016 1C3CA2                   BCTA,eq move
-3019                          ;COMI,r0 'I'                                     
-3019                          ;BCTA,eq fill
-3019                          ;COMI,r0 'Z'                                     
-3019                          ;BCTA,eq basic
-3019              
-3019              
-3019              
-3019              ;add extras here
-3019 1F001D                   bcta,UN ebug 
-301C              ;====================================================================
-301C              ; help displayed when '?' is entered at the PIPBUG prompt
-301C              ;====================================================================
-301C              ; really inefficient code - welcoming a fix
-301C 3F008A       help:       bsta,UN crlf                ;start on a new line
-301F 07FF                     lodi,R3 $FF                 ;256 R3 is pre-incremented in the instruction below
-3021 0F303D       help1:      loda,R0 helptxt,R3,+        ;load the character into R0 from the text below indexed by R3
-3024 E400                     comi,R0 $00                 ;is it zero? (end of string)
-3026 1C302E                   bcta,EQ help2               ;branch back to pipbug when done
-3029 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
-302C 1B73                     bctr,UN help1               ;loop back for the next character in the string
-302E 07FF         help2:      lodi,R3 $FF     
-3030 0F3121       help3:      loda,R0 helptxt1,R3,+       ;load the character into R0 from the text below indexed by R3
-3033 E400                     comi,R0 $00                 ;is it zero? (end of string)
-3035 1C0022                   bcta,EQ mbug                ;branch back to pipbug when done
-3038 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
-303B 1B73                     bctr,UN help3              
-303D 504950425547 helptxt:    db "PIPBUG Commands:",CR,LF,LF              ;16
-3050 416C74657220             db "Alter Memory aaaa  Aaaaa<CR>",CR,LF     ;28
-306E 536574204272             db "Set Breakpoint n   Bn aaaa<CR>",CR,LF   ;30
-308E 436C65617220             db "Clear Breakpoint n Cn<CR>",CR,LF        ;25
-30A9 44756D702074             db "Dump to tape       Daaaa bbbb<CR>",CR,LF        ;25
-30CC 476F746F2041             db "Goto Address aaaa  Gaaaa<CR>",CR,LF     ;28         
-30EA 4C6F61642048             db "Load Hex File      L<CR>",CR,LF         ;24
-3104 536565205265             db "See Register Rn    Sn<CR>",CR,LF,LF,$00     ;25     =156
-3121                          
-3121 5574696C6974 helptxt1:   db "Utility Routines:",CR,LF,LF
-3135 46696E642048             db "Find Hex String    Faaaa bbbb xxyy<CR>",CR,LF
-315D 46696E642048             db "Find Hex Value     Xaaaa bbbb xx<CR>",CR,LF
-3183 486578204C69             db "Hex List           Haaaa bbbb<CR>",CR,LF   
-31A6 4D6F76652020             db "Move               Maaaa bbbb cccc<CR>",CR,LF
-31CE              ;            db "Fill Memory        Iaaaa bbbb xx<CR>",CR,LF,$00
-31CE              
-31CE              ;Official Utility EPROM Label Equates-------------------------------------
-31CE              ;GPAR            equ $3C07        ;(R/w) EPROM subroutine
-31CE              ;INCRT           equ $3C2A        ;(R/w) EPROM subroutine
-31CE              ;PADR            equ $3C3C        ;(R/w) EPROM subroutine
-31CE              ;HEXLIST         equ $3C50        ;(R/w) EPROM subroutine
-31CE              ;SEARCH          equ $3C6A        ;(R/w) EPROM subroutine
-31CE              ;HEXIN           equ $3C8A        ;(R/w) EPROM subroutine
-31CE              ;VERIFY          equ $3CDD        ;(R/w) EPROM subroutine
-31CE              ;OK              equ $3CF8        ;(R/w) EPROM code section
-31CE              ;FAULTY          equ $3D0E        ;(R/w) EPROM code section
-31CE              ;MOVE            equ $3D3B        ;(R/w) EPROM subroutine
-31CE              ;Z3OUT           equ $3DBE        ;(R/w) EPROM subroutine (300 baud)
-31CE              ;Z3IN            equ $3DE4        ;(R/w) EPROM subroutine (300 baud)
-31CE              ;ZDUMP           equ $3E02        ;(R/w) EPROM subroutine (300 baud)
-31CE              ;ZLOAD           equ $3E53        ;(R/w) EPROM subroutine (300 baud)
-31CE              ;ZVERIFY         equ $3EA2        ;(R/w) EPROM subroutine (300 baud)
-31CE              
-31CE 000000000000             ds  $3C00-$,0               ;fill empty space with zeros
+3019 E452                     COMI,r0 'R'                                     
+301B 1C15C0                   BCTA,eq lass
+301E                          ;COMI,r0 'Z'                                     
+301E                          ;BCTA,eq basic
+301E E459                     COMI,r0 'Y'                                     
+3020              
+3020              
+3020              
+3020              
+3020              ;add extras here
+3020 1F001D                   bcta,UN ebug 
+3023              ;====================================================================
+3023              ; help displayed when '?' is entered at the PIPBUG prompt
+3023              ;====================================================================
+3023              ; really inefficient code - welcoming a fix
+3023 3F008A       help:       bsta,UN crlf                ;start on a new line
+3026 07FF                     lodi,R3 $FF                 ;256 R3 is pre-incremented in the instruction below
+3028 0F3053       help1:      loda,R0 helptxt,R3,+        ;load the character into R0 from the text below indexed by R3
+302B E400                     comi,R0 $00                 ;is it zero? (end of string)
+302D 1C3035                   bcta,EQ help2               ;branch back to pipbug when done
+3030 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
+3033 1B73                     bctr,UN help1               ;loop back for the next character in the string
+3035 07FF         help2:      lodi,R3 $FF     
+3037 0F313E       help3:      loda,R0 helptxt1,R3,+       ;load the character into R0 from the text below indexed by R3
+303A E400                     comi,R0 $00                 ;is it zero? (end of string)
+303C 1C3044                   bcta,EQ help4                ;branch back to pipbug when done
+303F 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
+3042 1B73                     bctr,UN help3
+3044 07FF         help4:      lodi,R3 $FF     
+3046 0F320B       help5:      loda,R0 helptxt2,R3,+       ;load the character into R0 from the text below indexed by R3
+3049 E400                     comi,R0 $00                 ;is it zero? (end of string)
+304B 1C0022                   bcta,EQ mbug                ;branch back to pipbug when done
+304E 3F02B4                   bsta,UN cout                ;else, print the character using pipbug serial output
+3051 1B73                     bctr,UN help5                          
+3053 504950425547 helptxt:    db "PIPBUG Commands:",CR,LF,LF              ;16
+3066 416C74657220             db "Alter Memory aaaa   Aaaaa<CR>",CR,LF     ;28
+3085 536574204272             db "Set Breakpoint n    Bn aaaa<CR>",CR,LF   ;30
+30A6 436C65617220             db "Clear Breakpoint n  Cn<CR>",CR,LF        ;25
+30C2 44756D702074             db "Dump to tape        Daaaa bbbb<CR>",CR,LF        ;25
+30E6 476F746F2041             db "Goto Address aaaa   Gaaaa<CR>",CR,LF     ;28         
+3105 4C6F61642048             db "Load Hex File       L<CR>",CR,LF         ;24
+3120 536565205265             db "See Register Rn     Sn<CR>",CR,LF,LF,$00     ;25     =156
+313E                          
+313E 5574696C6974 helptxt1:   db "Utility Routines:",CR,LF,LF
+3152 46696E642048             db "Find Hex String     Faaaa bbbb xxyy<CR>",CR,LF
+317B 46696E642048             db "Find Hex Value      Xaaaa bbbb xx<CR>",CR,LF
+31A2 486578204C69             db "Hex List            Haaaa bbbb<CR>",CR,LF   
+31C6 4D6F76652020             db "Move                Maaaa bbbb cccc<CR>",CR,LF
+31EF              ;            db "Fill Memory        Iaaaa bbbb xx<CR>",CR,LF,$00
+31EF 32363530204C             db "2650 Line Assembler R<CR>",CR,LF,$00
+320B              
+320B              helptxt2:
+320B 446973617373             db "Disassembler        G1B00 aaaa bbbb xx<CR>",CR,LF
+3237 5072696E7420             db "Print ASCII         G1DF0 aaaa<CR>",CR,LF,$00
+325C              ;Official Utility EPROM Label Equates-------------------------------------
+325C              ;GPAR            equ $3C07        ;(R/w) EPROM subroutine
+325C              ;INCRT           equ $3C2A        ;(R/w) EPROM subroutine
+325C              ;PADR            equ $3C3C        ;(R/w) EPROM subroutine
+325C              ;HEXLIST         equ $3C50        ;(R/w) EPROM subroutine
+325C              ;SEARCH          equ $3C6A        ;(R/w) EPROM subroutine
+325C              ;HEXIN           equ $3C8A        ;(R/w) EPROM subroutine
+325C              ;VERIFY          equ $3CDD        ;(R/w) EPROM subroutine
+325C              ;OK              equ $3CF8        ;(R/w) EPROM code section
+325C              ;FAULTY          equ $3D0E        ;(R/w) EPROM code section
+325C              ;MOVE            equ $3D3B        ;(R/w) EPROM subroutine
+325C              ;Z3OUT           equ $3DBE        ;(R/w) EPROM subroutine (300 baud)
+325C              ;Z3IN            equ $3DE4        ;(R/w) EPROM subroutine (300 baud)
+325C              ;ZDUMP           equ $3E02        ;(R/w) EPROM subroutine (300 baud)
+325C              ;ZLOAD           equ $3E53        ;(R/w) EPROM subroutine (300 baud)
+325C              ;ZVERIFY         equ $3EA2        ;(R/w) EPROM subroutine (300 baud)
+325C              
+325C 000000000000             ds  $3C00-$,0               ;fill empty space with zeros
 3C00                          org $3C00         
 3C00              L3C00: ;$3C00
 3C00 CD0FFA                   stra,r1     X2FFA
@@ -1001,15 +1353,19 @@ GT . . . . . . . . . . . . . . . = Value    00000001
 HADR . . . . . . . . . . . . . . = Value    00000432
 HDAT . . . . . . . . . . . . . . = Value    0000042E
 HDATA. . . . . . . . . . . . . . = Value    00000436 (not used)
-HELP . . . . . . . . . . . . . . = Value    0000301C
-HELP1. . . . . . . . . . . . . . = Value    00003021
-HELP2. . . . . . . . . . . . . . = Value    0000302E
-HELP3. . . . . . . . . . . . . . = Value    00003030
-HELPTXT. . . . . . . . . . . . . = Value    0000303D
-HELPTXT1 . . . . . . . . . . . . = Value    00003121
+HELP . . . . . . . . . . . . . . = Value    00003023
+HELP1. . . . . . . . . . . . . . = Value    00003028
+HELP2. . . . . . . . . . . . . . = Value    00003035
+HELP3. . . . . . . . . . . . . . = Value    00003037
+HELP4. . . . . . . . . . . . . . = Value    00003044
+HELP5. . . . . . . . . . . . . . = Value    00003046
+HELPTXT. . . . . . . . . . . . . = Value    00003053
+HELPTXT1 . . . . . . . . . . . . = Value    0000313E
+HELPTXT2 . . . . . . . . . . . . = Value    0000320B
 HEXLIST. . . . . . . . . . . . . = Value    00003C50
 II . . . . . . . . . . . . . . . = Value    00000020 (not used)
 INIT . . . . . . . . . . . . . . = Value    00000000 (not used)
+L1600. . . . . . . . . . . . . . = Value    00001600
 L3C00. . . . . . . . . . . . . . = Value    00003C00
 L3C25. . . . . . . . . . . . . . = Value    00003C25
 L3C29. . . . . . . . . . . . . . = Value    00003C29
@@ -1031,6 +1387,7 @@ L3D84. . . . . . . . . . . . . . = Value    00003CEB
 L3DA2. . . . . . . . . . . . . . = Value    00003D09
 LADR . . . . . . . . . . . . . . = Value    00000434
 LALT . . . . . . . . . . . . . . = Value    000000AE
+LASS . . . . . . . . . . . . . . = Value    000015C0
 LDAT . . . . . . . . . . . . . . = Value    00000430
 LF . . . . . . . . . . . . . . . = Value    0000000A
 LINE . . . . . . . . . . . . . . = Value    0000005B
@@ -1047,6 +1404,7 @@ MCNT . . . . . . . . . . . . . . = Value    00000428
 MOVE . . . . . . . . . . . . . . = Value    00003CA2
 NOK. . . . . . . . . . . . . . . = Value    000001D7
 ONE. . . . . . . . . . . . . . . = Value    000002CA
+P. . . . . . . . . . . . . . . . = Value    00000001 (not used)
 RECTYP . . . . . . . . . . . . . = Value    0000043B (not used)
 RS . . . . . . . . . . . . . . . = Value    00000010
 SEARCH . . . . . . . . . . . . . = Value    00003C6A
@@ -1085,12 +1443,13 @@ X2FFE. . . . . . . . . . . . . . = Value    00002FFE
 X2FFF. . . . . . . . . . . . . . = Value    00002FFF
 X3C43. . . . . . . . . . . . . . = Value    00003C43 (not used)
 XGOT . . . . . . . . . . . . . . = Value    00000409
+Z. . . . . . . . . . . . . . . . = Value    00000000
 ZERO . . . . . . . . . . . . . . = Value    000002CC
 
 Module Name:     *NONAME*
-Module Checksum: 0002088F
+Module Checksum: 00049D55
 
-Friday, October 25, 2024  22:02:41
+Thursday, October 31, 2024  17:44:37
 
-         934 Source Lines     932 Assembled Lines 
+        1413 Source Lines    1411 Assembled Lines 
                 >>>>   No Assembly Errors Detected.   <<<<

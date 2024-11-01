@@ -35,15 +35,15 @@
 //   outputDEBUG: Print memory access debugging messages.
 ////////////////////////////////////////////////////////////////////
 #define outputDEBUG 0
-#define hybugDEBUG 0
+#define hybugDEBUG  0
 
 ////////////////////////////////////////////////////////////////////
 //HyBug debug ADDRs Monitored
 #define hybugADDR_START_LOW 0x0000
 #define hybugADDR_END_LOW 0x0283
 //Low and High gap to avoid debug messages for the delay loops in ROM
-#define hybugADDR_START_HIGH 0x02d6
-#define hybugADDR_END_HIGH 0x4000
+#define hybugADDR_START_HIGH 0x02c5
+#define hybugADDR_END_HIGH 0x1b00
 //delay to slow down the output if required
 #define hybugDELAY 10
 ////////////////////////////////////////////////////////////////////
