@@ -1,0 +1,59 @@
+                        ;NAM HELLO           ; Program name
+                                
+                        ; Memory mapped I/O - Assuming ACIA at $8004
+   f000                 ACIA    EQU $F000          ; ACIA data register
+   f001                 STATUS  EQU $F001          ; ACIA status register
+                        ;CONTROL EQU $8006          ; ACIA control register
+   f87f                 STACK   EQU $F87F           ; Stack pointer initial value
+                        
+                        
+                        
+   fc00                     ORG $FC00          ; Program starts at $0100
+                        
+                        ; Reset routine
+   fc00   8e f8 7f      RESET   LDS #STACK         ; Initialize stack pointer
+                        
+                        ; Initialize ACIA
+                        ;LDAA #%00000011    ; Reset ACIA
+                        ;STAA CONTROL       ; Store to control register
+                        ;LDAA #%00010101    ; 8N1, /16 clock
+                        ;STAA CONTROL       ; Configure ACIA
+                        
+                        ; Clear RAM (assuming RAM from $0080 to $0FFF)
+   fc03   ce 00 00              LDX #$0000         ; Start of RAM
+   fc06   6f 00         CLRRAM  CLR 0,X           ; Clear location
+   fc08   08                    INX                ; Next location
+   fc09   8c 0f ff              CPX #$0FFF        ; End of RAM?
+   fc0c   26 f8                 BNE CLRRAM        ; If not, continue clearing
+                        
+   fc0e   7e fc 11              JMP START         ; Jump to main program
+                        
+                        ; Main program
+   fc11   ce fc 1f      START   LDX #MESSAGE       ; Load message address into X
+   fc14   a6 00         LOOP    LDAA 0,X          ; Load character from message
+   fc16   27 06                 BEQ HALT          ; If null terminator, we're done
+                        ;WAIT    LDAB STATUS       ; Check ACIA status
+                        ;        ANDB #$02         ; Test transmit buffer empty flag
+                        ;        BEQ WAIT          ; If not empty, keep waiting
+   fc18   b7 f0 00              STAA ACIA         ; Send character
+   fc1b   08                    INX               ; Point to next character
+   fc1c   20 f6                 BRA LOOP          ; Repeat for next character
+   fc1e   3e            HALT    WAI               ; Wait for interrupt (effectively halts)
+                        
+   fc1f   48 65 6c 6c   MESSAGE FCC 'Hello, World!' ; Message to display
+   fc23   6f 2c 20 57   
+   fc27   6f 72 6c 64   
+   fc2b   21            
+   fc2c   0d                    FCB $0D           ; Carriage return
+   fc2d   0a                    FCB $0A           ; Line feed
+   fc2e   00                    FCB $00           ; Null terminator
+                        
+                        
+   fffe                         ORG $FFFE          ; Reset vector location
+   fffe   fc 00                 FDB RESET          ; Reset vector points to reset routine        
+                        
+   0000                     END         ; End of program, start at RESET
+f000  ACIA          fc06  CLRRAM        fc1e  HALT          fc14  LOOP      
+fc1f  MESSAGE       fc00  RESET         f87f  STACK         fc11  START     
+f001  STATUS        
+

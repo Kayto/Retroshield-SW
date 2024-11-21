@@ -1,0 +1,83 @@
+                        ;NAM     COUNTER
+                                
+   f000                 ACIA    EQU     $F000       ; ACIA data register
+   f001                 STATUS  EQU     $F001       ; ACIA status register
+   f87f                 STACK   EQU     $F87F       ; Stack pointer initial value
+   0080                 COUNT   EQU     $0080       ; Counter storage
+   0081                 HUNDREDS EQU    $0081       ; Hundreds storage
+   0082                 TENS    EQU     $0082       ; Tens storage
+   0083                 ONES    EQU     $0083       ; Ones storage
+                        
+   fc00                         ORG     $FC00
+                        
+   fc00   8e f8 7f      START   LDS     #STACK      ; Initialize stack pointer
+   fc03   7f 00 80              CLR     COUNT       ; Initialize counter to 0
+   fc06   7f 00 81              CLR     HUNDREDS    ; Initialize hundreds to 0
+   fc09   7f 00 82              CLR     TENS        ; Initialize tens to 0
+   fc0c   7f 00 83              CLR     ONES        ; Initialize ones to 0
+                                
+   fc0f   7c 00 83      CNTLOP  INC     ONES        ; Increment ones
+   fc12   96 83                 LDAA    ONES        ; Load ones
+   fc14   81 0a                 CMPA    #10         ; Compare with 10
+   fc16   26 18                 BNE     PRINT       ; If not 10, print
+   fc18   7f 00 83              CLR     ONES        ; Reset ones
+   fc1b   7c 00 82              INC     TENS        ; Increment tens
+   fc1e   96 82                 LDAA    TENS        ; Load tens
+   fc20   81 0a                 CMPA    #10         ; Compare with 10
+   fc22   26 0c                 BNE     PRINT       ; If not 10, print
+   fc24   7f 00 82              CLR     TENS        ; Reset tens
+   fc27   7c 00 81              INC     HUNDREDS    ; Increment hundreds
+   fc2a   96 81                 LDAA    HUNDREDS    ; Load hundreds
+   fc2c   81 0a                 CMPA    #10         ; Compare with 10
+   fc2e   27 3e                 BEQ     HALT        ; If 10, halt
+                        
+   fc30   96 81         PRINT   LDAA    HUNDREDS    ; Load hundreds
+   fc32   27 07                 BEQ     PRINT_TENS  ; If zero, skip to tens
+   fc34   8b 30                 ADDA    #$30        ; Convert to ASCII
+   fc36   bd fc 6a              JSR     PUTCHR      ; Print hundreds
+   fc39   20 0b                 BRA     FORCE_TENS  ; Always print tens after hundreds
+                        
+   fc3b                 PRINT_TENS 
+   fc3b   96 82                 LDAA    TENS        ; Load tens
+   fc3d   27 0e                 BEQ     PRINT_ONES  ; If zero and no hundreds, skip to ones
+   fc3f   8b 30                 ADDA    #$30        ; Convert to ASCII
+   fc41   bd fc 6a              JSR     PUTCHR      ; Print tens
+   fc44   20 07                 BRA     PRINT_ONES
+                        
+   fc46                 FORCE_TENS
+   fc46   96 82                 LDAA    TENS        ; Load tens
+   fc48   8b 30                 ADDA    #$30        ; Convert to ASCII
+   fc4a   bd fc 6a              JSR     PUTCHR      ; Print tens regardless of value
+                        
+   fc4d                 PRINT_ONES 
+   fc4d   96 83                 LDAA    ONES        ; Load ones
+   fc4f   8b 30                 ADDA    #$30        ; Convert to ASCII
+   fc51   bd fc 6a              JSR     PUTCHR      ; Print ones
+                        
+   fc54   86 0d         NEWLINE LDAA    #$0D        ; Carriage return
+   fc56   bd fc 6a              JSR     PUTCHR
+   fc59   86 0a                 LDAA    #$0A        ; Line feed
+   fc5b   bd fc 6a              JSR     PUTCHR
+                        
+   fc5e   bd fc 63              JSR     DELAY       ; Call delay routine
+   fc61   20 ac                 BRA     CNTLOP      ; Continue loop
+                        
+   fc63   ce 0f ff      DELAY   LDX     #$0FFF      ; Load delay value
+   fc66   09            DELAYLP DEX                 ; Decrement X
+   fc67   26 fd                 BNE     DELAYLP     ; Loop until X is zero
+   fc69   39                    RTS
+                        
+   fc6a   b7 f0 00      PUTCHR  STAA    ACIA        ; Output character to ACIA
+   fc6d   39                    RTS
+                        
+   fc6e   3e            HALT    WAI                 ; Wait for interrupt
+                        
+   fffe                         ORG     $FFFE
+   fffe   fc 00         RESET   FDB     START       ; Reset vector points to START
+   0000                         END
+f000  ACIA          fc0f  CNTLOP        0080  COUNT         fc63  DELAY     
+fc66  DELAYLP       fc46  FORCE_TENS    fc6e  HALT          0081  HUNDREDS  
+fc54  NEWLINE       0083  ONES          fc30  PRINT         fc4d  PRINT_ONES
+fc3b  PRINT_TENS    fc6a  PUTCHR        fffe  RESET         f87f  STACK     
+fc00  START         f001  STATUS        0082  TENS          
+

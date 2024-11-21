@@ -1,0 +1,60 @@
+                        ;NAM     COUNTER
+                                
+   f000                 ACIA    EQU     $F000       ; ACIA data register
+   f001                 STATUS  EQU     $F001       ; ACIA status register
+   f87f                 STACK   EQU     $F87F       ; Stack pointer initial value
+   0080                 COUNT   EQU     $0080       ; Counter storage
+                        
+   fc00                         ORG     $FC00
+                        
+   fc00   8e f8 7f      START   LDS     #STACK      ; Initialize stack pointer
+   fc03   7f 00 80              CLR     COUNT       ; Initialize counter to 0
+                                
+   fc06   7c 00 80      CNTLOP  INC     COUNT       ; Increment counter
+   fc09   96 80                 LDAA    COUNT       ; Load counter
+   fc0b   81 64                 CMPA    #$64        ; Compare with 100 (decimal)
+   fc0d   27 35                 BEQ     HALT        ; If counter reaches 100, halt       
+                        
+   fc0f   16                    TAB                 ; Copy to B for division
+   fc10   86 00                 LDAA    #$00        ; Clear A for tens digit
+   fc12   c1 0a         DIVIDE  CMPB    #$0A        ; Compare B with 10
+   fc14   2d 05                 BLT     PRINT       ; If B < 10, print digits
+   fc16   4c                    INCA                ; Increment tens count
+   fc17   c0 0a                 SUBB    #$0A        ; Subtract 10 from ones
+   fc19   20 f7                 BRA     DIVIDE      ; Continue division
+                        
+   fc1b   36            PRINT   PSHA                ; Save tens digit
+   fc1c   4d                    TSTA                ; Test if tens digit is zero
+   fc1d   27 05                 BEQ     ONES        ; If zero, skip to ones digit
+   fc1f   8b 30                 ADDA    #$30        ; Convert tens to ASCII
+   fc21   bd fc 40              JSR     PUTCHR      ; Print tens digit
+   fc24   17            ONES    TBA                 ; Get ones digit to A
+   fc25   8b 30                 ADDA    #$30        ; Convert ones to ASCII
+   fc27   bd fc 40              JSR     PUTCHR      ; Print ones
+                        
+   fc2a   86 0d         NEWLINE LDAA    #$0D        ; Carriage return
+   fc2c   bd fc 40              JSR     PUTCHR
+   fc2f   86 0a                 LDAA    #$0A        ; Line feed
+   fc31   bd fc 40              JSR     PUTCHR
+                        
+   fc34   bd fc 39              JSR     DELAY       ; Call delay routine
+   fc37   20 cd                 BRA     CNTLOP      ; Continue loop
+                        
+   fc39   ce ff ff      DELAY   LDX     #$FFFF      ; Load delay value
+   fc3c   09            DELAYLP DEX                 ; Decrement X
+   fc3d   26 fd                 BNE     DELAYLP     ; Loop until X is zero
+   fc3f   39                    RTS
+                        
+   fc40   b7 f0 00      PUTCHR  STAA    ACIA        ; Output character to ACIA
+   fc43   39                    RTS
+                        
+   fc44   3e            HALT    WAI                 ; Wait for interrupt
+                        
+   fffe                         ORG     $FFFE
+   fffe   fc 00         RESET   FDB     START       ; Reset vector points to START
+   0000                         END
+f000  ACIA          fc06  CNTLOP        0080  COUNT         fc39  DELAY     
+fc3c  DELAYLP       fc12  DIVIDE        fc44  HALT          fc2a  NEWLINE   
+fc24  ONES          fc1b  PRINT         fc40  PUTCHR        fffe  RESET     
+f87f  STACK         fc00  START         f001  STATUS        
+

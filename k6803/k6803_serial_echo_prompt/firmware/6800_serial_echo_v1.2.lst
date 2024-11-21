@@ -1,0 +1,159 @@
+                        ;******************************************************************************
+                        ; File: 6800_serial_echo_v1.2.asm
+                        ; Title: 6800 Serial Echo Program
+                        ; Author: kayto@github.com
+                        ; Date: November 18, 2024
+                        ; Version: 1.2
+                        ;
+                        ; Description:
+                        ;   Serial communication program for Motorola 6800 microprocessor that provides
+                        ;   character echo functionality with prompt/CR/LF handling. The program reads
+                        ;   characters from a serial input port and echoes them back to the output.
+                        ;
+                        ; Memory Map:
+                        ;   $F000 - 6850 ACIA Data Register (Read/Write)
+                        ;   $F001 - 6850 ACIA Status Register (Read only)
+                        ;   
+                        ;   LORAM_START: 0x0080 - Start of user RAM
+                        ;   LORAM_END:   0x0FFF - End of user RAM
+                        ;   HIRAM_START: 0xF800 - Start of system RAM
+                        ;   HIRAM_END:   0xF8FF - End of system RAM
+                        ;   ROM_START:   0xFC00 - Start of program ROM
+                        ;   ROM_END:     0xFFF7 - End of program area
+                        ;   BOOT_START:  0xFFF8 - Start of vector table
+                        ;   BOOT_END:    0xFFFF - End of vector table
+                        
+                        ;
+                        ; Register Usage:
+                        ;   A - Used for character I/O and ACIA status checking
+                        ;       - Reads ACIA status from TERS ($F001)
+                        ;       - Reads/writes character data from/to TERD ($F000)
+                        ;   X - Used as pointer for:
+                        ;       - Memory operations during RAM clearing
+                        ;       - String handling (prompt and CRLF output)
+                        ;       - Sequential memory access
+                        ;   SP - Stack Pointer, initialized to $F87F
+                        ;        Provides stack space from $F87F downward
+                        ;
+                        ; Status Register Bits:
+                        ;   Bit 0 - Receive Data Register Full (RDRF)
+                        ;           1 = Character available to read
+                        ;           0 = No character available
+                        ;   Bit 1 - Transmit Data Register Empty (TDRE)
+                        ;           1 = Ready to transmit next character
+                        ;           0 = Still transmitting previous character
+                        ;
+                        ; Revision History:
+                        ;   1.2 - added prompt string output routine
+                        ;   1.1 - added prompt ">"
+                        ;   1.0 - Initial release
+                        ;******************************************************************************
+                        ; 
+                        ; I/O Eequates
+   f000                 TERD	EQU $F000	     ;ACIADA TERMINAL DATA PORT
+                                                     ; Read: Received character
+                                                     ; Write: Character to transmit
+   f001                 TERS	EQU $F001	     ;ACIACS TERMINAL STATUS PORT
+                        ;******************************************************************************
+                        ; Stack Address at $F87f
+   f87f                 STACK   EQU $F87F            ; Top of stack location
+                                                     ; Stack grows downward from this address 
+                        ;
+                        ;******************************************************************************
+   fc00                         ORG   $FC00          ; Program starts at $FC00
+                        
+                        ;******************************************************************************
+                        ; Program Initialization
+                        ;******************************************************************************
+                        ; RESET ENTRY POINT
+   fc00   8e f8 7f      RST     LDS #STACK 	     ; Initialize stack pointer
+                        ; Clear RAM (assuming RAM from $0080 to $0FFF)
+   fc03   ce 00 80              LDX #$0080           ; Start of RAM
+   fc06   6f 00         CLRRAM  CLR 0,X              ; Clear location
+   fc08   08                    INX                  ; Next location
+   fc09   8c 0f ff              CPX #$0FFF           ; End of RAM?
+   fc0c   26 f8                 BNE CLRRAM           ; If not, continue clearing
+                        
+                        ; ACIA INITIALIZE
+                        ;        LDAA	#$03	     ; RESET CODE
+                        ;        STAA	TERS
+                        ;        NOP
+                        ;        LDAA	#$15	     ; 8N1 NON-INTERRUPT
+                        ;        STAA	TERS       
+                        ;
+   fc0e   20 00                 BRA START            ; Jump to main program
+                        ;
+                        ;******************************************************************************
+                        ; Entry
+                        ;******************************************************************************
+   fc10   ce fc 3c      START   LDX #PROMPT         ; Load message address into X
+   fc13   a6 00         LOOP    LDAA 0,X            ; Load character from message
+   fc15   27 12                 BEQ READY           ; If null terminator, we're done
+   fc17   b7 f0 00              STAA TERD           ; Send character
+   fc1a   08                    INX                 ; Point to next character
+   fc1b   20 f6                 BRA LOOP            ; Repeat for next character
+                        ;
+                        ;******************************************************************************
+                        ; Main Input/Output Loop
+                        ;******************************************************************************
+                        ;
+   fc1d   b6 f0 00      READ    LDAA  TERD            ; Read input character
+   fc20   81 0d                 CMPA  #$0D            ; Check for carriage return
+   fc22   27 0e                 BEQ   DO_CR           ; Handle CR if found
+   fc24   b7 f0 00              STAA  TERD            ; Echo character
+   fc27   20 00                 BRA   READY           ; No, get next char
+                        ;
+   fc29   b6 f0 01      READY   LDAA  TERS            ; Check output status
+   fc2c   85 02                 BITA  #$02            ; Test output ready
+   fc2e   27 f9                 BEQ   READY           ; Wait if not ready
+   fc30   20 eb                 BRA   READ            ; Continue reading
+                        ;
+                        ;******************************************************************************
+                        ; Carriage Return/Line Feed Handler
+                        ;******************************************************************************
+   fc32   ce fc 3a      DO_CR   LDX    #CRLF          ; Point to CRLF
+   fc35   bd fc 43              JSR    STROUT1        ; Send it 
+   fc38   20 ef                 BRA READY             ; Return to main loop 
+                        ;
+                        ;******************************************************************************
+                        ; Prompt/CRLF
+                        ;******************************************************************************
+   fc3a   0d 0a         CRLF    FCB    $0D,$0A        ; CR, LF, terminator      
+   fc3c   3e 20         PROMPT  FCC    '>',' '        ; Prompt string
+   fc3e   00                    FCB    $00            ; String terminator
+                        ;
+                        ;******************************************************************************
+                        ; Character String output routine
+                        ;******************************************************************************
+   fc3f   b7 f0 00      STROUT	STAA  TERD 		; Output current character
+   fc42   08            	INX			; Point to next character
+   fc43   a6 00         STROUT1	LDA A	0,X		; Get next character
+   fc45   81 00         	CMP A	#0		; Check for end of string
+   fc47   26 f6         	BNE	STROUT		; Continue if not end
+   fc49   39            	RTS
+                        ;;******************************************************************************
+                        ; Padding and Vector Table
+                        ;******************************************************************************
+                                ; Fill unused space with $FF
+   fc4a   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc4e   ff ff ff ff   
+   fc52   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc56   ff ff ff ff   
+   fc5a   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc5e   ff ff ff ff   
+                        ;
+                        ;******************************************************************************
+                        ; Interrupt Vectors
+                        ;******************************************************************************
+   fff8                         ORG   $FFF8           ; Vector table start
+   fff8   fc 00                 FDB   RST             ; IRQ Vector ($FFF8-$FFF9)
+   fffa   fc 00                 FDB   RST             ; SWI Vector ($FFFA-$FFFB)
+   fffc   fc 00                 FDB   RST             ; NMI Vector ($FFFC-$FFFD)
+   fffe   fc 10                 FDB   START           ; Reset Vector ($FFFE-$FFFF)
+                        ;
+   0000                         END        
+fc06  CLRRAM        fc3a  CRLF          fc32  DO_CR         fc13  LOOP      
+fc3c  PROMPT        fc1d  READ          fc29  READY         fc00  RST       
+f87f  STACK         fc10  START         fc3f  STROUT        fc43  STROUT1   
+f000  TERD          f001  TERS          
+

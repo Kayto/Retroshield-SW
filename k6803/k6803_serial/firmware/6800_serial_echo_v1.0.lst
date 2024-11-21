@@ -1,0 +1,116 @@
+                        
+                        ;******************************************************************************
+                        ; File: 6800_serial_echo_v1.0.asm
+                        ; Title: 6800 Serial Echo Program
+                        ; Author: Julius AI
+                        ; Date: November 11, 2024
+                        ; Version: 1.0
+                        ;
+                        ; Description:
+                        ;   Serial communication program for Motorola 6800 microprocessor that provides
+                        ;   character echo functionality with proper CR/LF handling. The program reads
+                        ;   characters from a serial input port and echoes them back to the output.
+                        ;
+                        ; Memory Map:
+                        ;   $F000 - 6850 Serial Data Register (Read/Write)
+                        ;   $F001 - 6850 Serial Status Register
+                        ;   Program located at $FC00-$FFFF
+                        ;
+                        ; Register Usage:
+                        ;   A - Used for character I/O and status checking
+                        ;   X - Used for delay loops
+                        ;   SP - Initialized to $F87F
+                        ;
+                        ; Status Register Bits:
+                        ;   Bit 0 - Input Ready (1 = Character available)
+                        ;   Bit 1 - Output Ready (1 = Ready to transmit)
+                        ;
+                        ; Revision History:
+                        ;   1.0 - Initial release
+                        ;******************************************************************************
+                        
+   fc00                         ORG   $FC00           ; Program starts at $FC00
+                        
+                        ;******************************************************************************
+                        ; Program Initialization
+                        ;******************************************************************************
+   fc00   8e f8 7f      START   LDS   #$F87F          ; Initialize stack pointer
+   fc03   ce 00 32              LDX   #$0032          ; Initial delay count from reset
+   fc06   09            LOOP1   DEX                   ; Decrement delay counter
+   fc07   26 fd                 BNE   LOOP1           ; Continue until delay complete
+                        ;        
+   fc09   86 03                 LDAA  #$03            ; 6850 Serial initialization value
+   fc0b   b7 f0 01              STAA  $F001           ; Initialize serial control register
+   fc0e   bd fc 42              JSR   DELAY           ; Additional startup delay for 6850 ACIA
+   fc11   86 15                 LDAA  #$15            ; 6850 Serial configuration value
+   fc13   b7 f0 01              STAA  $F001           ; Configure serial interface
+                        ;
+                        ;******************************************************************************
+                        ; Main Input/Output Loop
+                        ;******************************************************************************
+   fc16   b6 f0 01      WAIT    LDAA  $F001           ; Read serial status
+   fc19   84 01                 ANDA  #$01            ; Mask input ready bit
+   fc1b   27 f9                 BEQ   WAIT            ; Loop until input ready
+                        ;
+   fc1d   b6 f0 00      READ    LDAA  $F000           ; Read input character
+   fc20   b7 f0 00              STAA  $F000           ; Echo character
+   fc23   81 0d                 CMPA  #$0D            ; Check for carriage return
+   fc25   27 09                 BEQ   HANDLE_CR       ; Handle CR if found
+                        ;
+   fc27   b6 f0 01      READY   LDAA  $F001           ; Check output status
+   fc2a   85 02                 BITA  #$02            ; Test output ready
+   fc2c   27 f9                 BEQ   READY           ; Wait if not ready
+   fc2e   20 ed                 BRA   READ            ; Continue reading
+                        ;
+                        ;******************************************************************************
+                        ; Carriage Return/Line Feed Handler
+                        ;******************************************************************************
+   fc30                 HANDLE_CR
+   fc30   8d 04                 BSR   SEND_CR         ; Send carriage return
+   fc32   8d 08                 BSR   SEND_LF         ; Send line feed
+   fc34   20 f1                 BRA   READY           ; Return to main loop
+                        ;
+                        ;******************************************************************************
+                        ; Character Output Subroutines
+                        ;******************************************************************************
+   fc36   86 0d         SEND_CR LDAA  #$0D            ; CR character
+   fc38   b7 f0 00              STAA  $F000           ; Send CR
+   fc3b   39                    RTS                   ; Return
+                        ;
+   fc3c   86 0a         SEND_LF LDAA  #$0A            ; LF character
+   fc3e   b7 f0 00              STAA  $F000           ; Send LF
+   fc41   39                    RTS                   ; Return
+                        ;
+                        ;******************************************************************************
+                        ; Delay Subroutine
+                        ;******************************************************************************
+   fc42   ce ff ff      DELAY   LDX   #$FFFF          ; Maximum delay value
+   fc45   09            DLOOP   DEX                   ; Decrement counter
+   fc46   26 fd                 BNE   DLOOP           ; Continue until zero
+   fc48   39                    RTS                   ; Return
+                        ;
+                        ;******************************************************************************
+                        ; Padding and Vector Table
+                        ;******************************************************************************
+                                ; Fill unused space with $FF
+   fc49   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc4d   ff ff ff ff   
+   fc51   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc55   ff ff ff ff   
+   fc59   ff ff ff ff           FCB   $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; Padding bytes
+   fc5d   ff ff ff ff   
+                        ;
+                        ;******************************************************************************
+                        ; Interrupt Vectors
+                        ;******************************************************************************
+   fff8                         ORG   $FFF8           ; Vector table start
+   fff8   fc 00                 FDB   START           ; IRQ Vector ($FFF8-$FFF9)
+   fffa   fc 00                 FDB   START           ; SWI Vector ($FFFA-$FFFB)
+   fffc   fc 00                 FDB   START           ; NMI Vector ($FFFC-$FFFD)
+   fffe   fc 00                 FDB   START           ; Reset Vector ($FFFE-$FFFF)
+                        ;
+   fc00                         END   START           ; Program entry point
+fc42  DELAY         fc45  DLOOP         fc30  HANDLE_CR     fc06  LOOP1     
+fc1d  READ          fc27  READY         fc36  SEND_CR       fc3c  SEND_LF   
+fc00  START         fc16  WAIT          
+

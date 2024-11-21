@@ -1,0 +1,157 @@
+                        ; NAM     COUNTER 0-9,999,999
+                            
+   f000                 ACIA    EQU     $F000       ; ACIA data register
+   f001                 STATUS  EQU     $F001       ; ACIA status register
+   f87f                 STACK   EQU     $F87F       ; Stack pointer initial value
+   0080                 COUNT   EQU     $0080       ; Counter storage
+   0081                 MILL    EQU     $0081       ; Millions (1000000s)
+   0082                 HTHOUS  EQU     $0082       ; Hundred thousands (100000s)
+   0083                 TTHOUS  EQU     $0083       ; Ten thousands (10000s)
+   0084                 THOUS   EQU     $0084       ; Thousands (1000s)
+   0085                 HUNDS   EQU     $0085       ; Hundreds
+   0086                 TENS    EQU     $0086       ; Tens
+   0087                 ONES    EQU     $0087       ; Ones
+                        
+   fc00                         ORG     $FC00
+                        
+   fc00   8e f8 7f      START   LDS     #STACK      ; Initialize stack pointer
+   fc03   7f 00 81              CLR     MILL        ; Initialize millions to 0
+   fc06   7f 00 82              CLR     HTHOUS      ; Initialize hundred thousands to 0
+   fc09   7f 00 83              CLR     TTHOUS      ; Initialize ten thousands to 0
+   fc0c   7f 00 84              CLR     THOUS       ; Initialize thousands to 0
+   fc0f   7f 00 85              CLR     HUNDS       ; Initialize hundreds to 0
+   fc12   7f 00 86              CLR     TENS        ; Initialize tens to 0
+   fc15   7f 00 87              CLR     ONES        ; Initialize ones to 0
+                                
+   fc18   7c 00 87      CNTLOP  INC     ONES        ; Increment ones
+   fc1b   96 87                 LDAA    ONES        
+   fc1d   81 0a                 CMPA    #10         
+   fc1f   26 48                 BNE     PSTART      
+   fc21   7f 00 87              CLR     ONES        
+   fc24   7c 00 86              INC     TENS        
+   fc27   96 86                 LDAA    TENS        
+   fc29   81 0a                 CMPA    #10         
+   fc2b   26 3c                 BNE     PSTART      
+   fc2d   7f 00 86              CLR     TENS        
+   fc30   7c 00 85              INC     HUNDS       
+   fc33   96 85                 LDAA    HUNDS       
+   fc35   81 0a                 CMPA    #10         
+   fc37   26 30                 BNE     PSTART      
+   fc39   7f 00 85              CLR     HUNDS       
+   fc3c   7c 00 84              INC     THOUS       
+   fc3f   96 84                 LDAA    THOUS       
+   fc41   81 0a                 CMPA    #10         
+   fc43   26 24                 BNE     PSTART      
+   fc45   7f 00 84              CLR     THOUS       
+   fc48   7c 00 83              INC     TTHOUS      
+   fc4b   96 83                 LDAA    TTHOUS      
+   fc4d   81 0a                 CMPA    #10         
+   fc4f   26 18                 BNE     PSTART      
+   fc51   7f 00 83              CLR     TTHOUS      
+   fc54   7c 00 82              INC     HTHOUS      
+   fc57   96 82                 LDAA    HTHOUS      
+   fc59   81 0a                 CMPA    #10         
+   fc5b   26 0c                 BNE     PSTART      
+   fc5d   7f 00 82              CLR     HTHOUS      
+   fc60   7c 00 81              INC     MILL        
+   fc63   96 81                 LDAA    MILL        
+   fc65   81 0a                 CMPA    #10         
+   fc67   27 0b                 BEQ     HALT        ; Now closer to loop control
+                        
+   fc69   bd fc 75      PSTART  JSR     PRNUM       ; Print number subroutine
+   fc6c   bd fc e8              JSR     NEWLN       ; Newline subroutine
+   fc6f   bd fc f3              JSR     DELAY       ; Delay subroutine
+   fc72   20 a4                 BRA     CNTLOP      ; Branch back to start
+                        
+   fc74   3e            HALT    WAI                 ; Moved HALT closer to loop control
+                        
+   fc75   96 81         PRNUM   LDAA    MILL        ; Start printing with millions
+   fc77   27 07                 BEQ     CHK_HT
+   fc79   8b 30                 ADDA    #$30
+   fc7b   bd fc fa              JSR     PUTCHR
+   fc7e   20 0b                 BRA     FORCE_HT
+                        
+   fc80   96 82         CHK_HT  LDAA    HTHOUS
+   fc82   27 17                 BEQ     CHK_TT
+   fc84   8b 30                 ADDA    #$30
+   fc86   bd fc fa              JSR     PUTCHR
+   fc89   20 07                 BRA     FORCE_TT
+                        
+   fc8b   96 82         FORCE_HT LDAA    HTHOUS
+   fc8d   8b 30                 ADDA    #$30
+   fc8f   bd fc fa              JSR     PUTCHR
+                        
+   fc92   96 83         FORCE_TT LDAA    TTHOUS
+   fc94   8b 30                 ADDA    #$30
+   fc96   bd fc fa              JSR     PUTCHR
+   fc99   20 0b                 BRA     FORCE_TH
+                        
+   fc9b   96 83         CHK_TT  LDAA    TTHOUS
+   fc9d   27 10                 BEQ     CHK_TH
+   fc9f   8b 30                 ADDA    #$30
+   fca1   bd fc fa              JSR     PUTCHR
+   fca4   20 00                 BRA     FORCE_TH
+                        
+   fca6   96 84         FORCE_TH LDAA    THOUS
+   fca8   8b 30                 ADDA    #$30
+   fcaa   bd fc fa              JSR     PUTCHR
+   fcad   20 0b                 BRA     FORCE_H
+                        
+   fcaf   96 84         CHK_TH  LDAA    THOUS
+   fcb1   27 10                 BEQ     CHK_H
+   fcb3   8b 30                 ADDA    #$30
+   fcb5   bd fc fa              JSR     PUTCHR
+   fcb8   20 00                 BRA     FORCE_H
+                        
+   fcba   96 85         FORCE_H LDAA    HUNDS
+   fcbc   8b 30                 ADDA    #$30
+   fcbe   bd fc fa              JSR     PUTCHR
+   fcc1   20 0b                 BRA     FORCE_T
+                        
+   fcc3   96 85         CHK_H   LDAA    HUNDS
+   fcc5   27 10                 BEQ     CHK_T
+   fcc7   8b 30                 ADDA    #$30
+   fcc9   bd fc fa              JSR     PUTCHR
+   fccc   20 00                 BRA     FORCE_T
+                        
+   fcce   96 86         FORCE_T LDAA    TENS
+   fcd0   8b 30                 ADDA    #$30
+   fcd2   bd fc fa              JSR     PUTCHR
+   fcd5   20 09                 BRA     PRINT_O
+                        
+   fcd7   96 86         CHK_T   LDAA    TENS
+   fcd9   27 05                 BEQ     PRINT_O
+   fcdb   8b 30                 ADDA    #$30
+   fcdd   bd fc fa              JSR     PUTCHR
+                        
+   fce0   96 87         PRINT_O LDAA    ONES
+   fce2   8b 30                 ADDA    #$30
+   fce4   bd fc fa              JSR     PUTCHR
+   fce7   39                    RTS
+                        
+   fce8   86 0d         NEWLN   LDAA    #$0D
+   fcea   bd fc fa              JSR     PUTCHR
+   fced   86 0a                 LDAA    #$0A
+   fcef   bd fc fa              JSR     PUTCHR
+   fcf2   39                    RTS
+                        
+   fcf3   ce 00 ff      DELAY   LDX     #$00FF
+   fcf6   09            DELAYLP DEX
+   fcf7   26 fd                 BNE     DELAYLP
+   fcf9   39                    RTS
+                        
+   fcfa   b7 f0 00      PUTCHR  STAA    ACIA
+   fcfd   39                    RTS
+                        
+   fffe                         ORG     $FFFE
+   fffe   fc 00         RESET   FDB     START
+   0000                         END
+f000  ACIA          fcc3  CHK_H         fc80  CHK_HT        fcd7  CHK_T     
+fcaf  CHK_TH        fc9b  CHK_TT        fc18  CNTLOP        0080  COUNT     
+fcf3  DELAY         fcf6  DELAYLP       fcba  FORCE_H       fc8b  FORCE_HT  
+fcce  FORCE_T       fca6  FORCE_TH      fc92  FORCE_TT      fc74  HALT      
+0082  HTHOUS        0085  HUNDS         0081  MILL          fce8  NEWLN     
+0087  ONES          fce0  PRINT_O       fc75  PRNUM         fc69  PSTART    
+fcfa  PUTCHR        fffe  RESET         f87f  STACK         fc00  START     
+f001  STATUS        0086  TENS          0084  THOUS         0083  TTHOUS    
+
