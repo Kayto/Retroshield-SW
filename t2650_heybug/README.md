@@ -13,7 +13,7 @@ The following Utility Routines are working;
 - Hex List           	Haaaa bbbb
 - Move             	Maaaa bbbb cccc
 - Find Hex        Xaaaa bbbb xx
-- 2650 Line Assembler R **testing required, improved editor not implemented**
+- 2650 Line Assembler **testing required, improved editor not implemented**
 - Disassembler        G1B00 aaaa bbbb xx
 - Print ASCII         G1DF0 aaaa
 
