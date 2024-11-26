@@ -1,0 +1,78 @@
+                        ;******************************************************************************
+                        ; Minimal Serial I/O Test for Motorola 6800
+                        ; Based directly on working echo implementation
+                        ;******************************************************************************
+                        
+                        ; I/O Addresses
+   f000                 TERD    EQU $F000    ; ACIA Data Register
+   f001                 TERS    EQU $F001    ; ACIA Status Register
+   f87f                 STACK   EQU $F87F    ; Stack location
+                        
+   fc00                         ORG $FC00
+                        
+                        ;******************************************************************************
+                        ; Program Entry
+                        ;******************************************************************************
+   fc00   8e f8 7f      START   LDS #STACK          ; Initialize stack pointer
+                         ;       JSR INIT_ACIA       ; Initialize ACIA
+   fc03   bd fc 08      LOOP    JSR READ           ; Read and echo character
+   fc06   20 fb                 BRA LOOP           ; Repeat forever
+                        
+                        ;******************************************************************************
+                        ; ACIA Initialization
+                        ;******************************************************************************
+                        ;INIT_ACIA
+                        ;        LDAA #$03          ; Reset code
+                        ;        STAA TERS
+                        ;        NOP                ; Small delay
+                        ;        LDAA #$15          ; 8N1 non-interrupt
+                        ;        STAA TERS
+                        ;        RTS
+                        
+                        ;******************************************************************************
+                        ; Main Input/Output Loop - Exact copy from working echo
+                        ;******************************************************************************
+   fc08   b6 f0 00      READ    LDAA TERD          ; Read input character
+   fc0b   81 0d                 CMPA #$0D          ; Check for carriage return
+   fc0d   27 0e                 BEQ DO_CR          ; Handle CR if found
+   fc0f   b7 f0 00              STAA TERD          ; Echo character
+   fc12   20 00                 BRA READY          ; Check if ready for next
+                        
+   fc14   b6 f0 01      READY   LDAA TERS          ; Check output status
+   fc17   85 02                 BITA #$02          ; Test output ready
+   fc19   27 f9                 BEQ READY          ; Wait if not ready
+   fc1b   20 eb                 BRA READ           ; Continue reading
+                        
+   fc1d   ce fc 30      DO_CR   LDX #CRLF          ; Point to CRLF
+   fc20   bd fc 29              JSR STROUT1        ; Send it
+   fc23   20 ef                 BRA READY          ; Return to main loop
+                        
+                        ;******************************************************************************
+                        ; String Output Routines - Exact copy from working echo
+                        ;******************************************************************************
+   fc25   b7 f0 00      STROUT  STAA TERD          ; Output current character
+   fc28   08                    INX                ; Point to next character
+   fc29   a6 00         STROUT1 LDAA 0,X           ; Get next character
+   fc2b   81 00                 CMPA #0            ; Check for end of string
+   fc2d   26 f6                 BNE STROUT         ; Continue if not end
+   fc2f   39                    RTS
+                        
+                        ;******************************************************************************
+                        ; Constants
+                        ;******************************************************************************
+   fc30   0d 0a 00      CRLF    FCB $0D,$0A,$00    ; CR, LF, null terminator
+                        
+                        ;******************************************************************************
+                        ; Vector Table
+                        ;******************************************************************************
+   fff8                         ORG $FFF8
+   fff8   fc 00                 FDB START          ; IRQ Vector
+   fffa   fc 00                 FDB START          ; SWI Vector
+   fffc   fc 00                 FDB START          ; NMI Vector
+   fffe   fc 00                 FDB START          ; Reset Vector
+                        
+   fc00                         END START
+fc30  CRLF          fc1d  DO_CR         fc03  LOOP          fc08  READ      
+fc14  READY         f87f  STACK         fc00  START         fc25  STROUT    
+fc29  STROUT1       f000  TERD          f001  TERS          
+
