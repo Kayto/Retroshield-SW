@@ -1,0 +1,192 @@
+                        ; File: 6800_serial_text_handling.asm
+                        ; Title: Serial I/O backspace handling and messages
+                        ; Author: kayto@github.com
+                        ; Date: November 29, 2024
+                        ; Version: 1.0
+                        ;
+                        ; Description:
+                        ; Serial i/o with message, CRLF, delete/backspace handling
+                        ; For Motorola 6800 with ACIA
+                        ; ** i cant correct the bug that drops the 'E' in the
+                        ; ** exit message. Debug output added to Arduino code which
+                        ; ** shows correct printing so suspect a timing issue somewhere.
+                        ;
+                        ;RAMLO_START   0x0080
+                        ;RAMLO_END     0x0FFF
+                        ;RAMHI_START   0xF800
+                        ;RAMHI_END     0xF8FF
+                        ;
+                                CPU       6801      
+                        ; I/O Addresses
+   f000                 TERD    EQU $F000    ; ACIA Data Register
+   f001                 TERS    EQU $F001    ; ACIA Status Register
+   f87f                 STACK   EQU $F87F    ; Stack location
+                        
+                        ; Constants
+   000d                 CR      EQU $0D      ; Carriage return
+   000a                 LF      EQU $0A      ; Line feed
+   0008                 BS      EQU $08      ; Backspace
+   001b                 ESC     EQU $1B      ; Escape key ($1B = 27)
+   0020                 SPACE   EQU $20      ; Space character
+   007f                 DEL     EQU $7F      ; Delete character
+   0000                 EOT     EQU $00      ; End of transmission (string terminator)
+                        
+                        ; Variables in zero page
+   0080                 CURPOS  EQU $0080    ; Cursor position (2 bytes)
+   0085                 BUFST   EQU $0085    ; Buffer start (2 bytes)
+   0087                 BUFEND  EQU $0087    ; Buffer end (2 bytes)
+   0089                 CURLINE EQU $0089    ; Current line (2 bytes)
+   008b                 TOTLINE EQU $008B    ; Total lines (2 bytes)
+   008d                 ECHOF   EQU $008D    ; Echo flag (1 = no echo)
+                        
+   fc00                         ORG $FC00
+                        
+   fc00   8e f8 7f      START   LDS #STACK          ; Initialize stack pointer
+   fc03   7f 00 8d              CLR ECHOF           ; Enable echo
+   fc06   ce fd 01              LDX #LINEBUF        ; Initialize buffer
+   fc09   df 85                 STX BUFST           ; Set buffer start
+   fc0b   df 87                 STX BUFEND          ; Set buffer end
+   fc0d   ce fc 93              LDX #MSGWEL         ; Load welcome message
+   fc10   bd fc 3d              JSR STROUT          ; Display welcome
+   fc13   bd fc 33      MAIN    JSR CHRIN          ; Get character with echo
+                        
+   fc16   bd fc 4a              JSR STORE_CHAR     ; Store character in buffer
+   fc19   20 f8                 BRA MAIN           ; Continue main loop
+                        
+                        ; Character Output
+   fc1b   37            CHROUT  PSHB               ; Save B register
+   fc1c   f6 f0 01      CHR01   LDAB TERS          ; Check if ready to transmit
+   fc1f   c4 04                 ANDB #$04          ; Test transmit ready bit
+   fc21   27 f9                 BEQ CHR01          ; Loop if not ready
+   fc23   33                    PULB               ; Restore B
+   fc24   b7 f0 00              STAA TERD          ; Output character
+   fc27   39                    RTS                ; Return from subroutine
+                        
+                        ; Character Input (Raw)
+   fc28   b6 f0 01      CHRIN8  LDAA TERS          ; Check if character ready
+   fc2b   84 02                 ANDA #$02          ; Test receive bit
+   fc2d   27 f9                 BEQ CHRIN8         ; Loop if no character
+   fc2f   b6 f0 00              LDAA TERD          ; Get character
+   fc32   39                    RTS
+                        
+                        ; Character Input with Echo
+   fc33   8d f3         CHRIN   BSR CHRIN8         ; Get character
+   fc35   7d 00 8d              TST ECHOF          ; Check echo flag
+   fc38   26 02                 BNE NOECHO         ; Skip echo if flag set
+   fc3a   8d df                 BSR CHROUT         ; Echo character
+   fc3c   39            NOECHO  RTS
+                        
+                        ; String Output
+   fc3d   a6 00         STROUT  LDAA 0,X          ; Get character from string
+   fc3f   81 00                 CMPA #EOT         ; End of string?
+   fc41   27 06                 BEQ STROUT_DONE   ; If EOT, we're done
+   fc43   bd fc 1b              JSR CHROUT        ; Output character
+   fc46   08                    INX               ; Point to next
+   fc47   20 f4                 BRA STROUT        ; Continue
+   fc49                 STROUT_DONE
+   fc49   39                    RTS
+                        
+                        ; Store character in buffer
+   fc4a                 STORE_CHAR
+   fc4a   81 08                 CMPA #BS           ; Check for backspace
+   fc4c   27 1f                 BEQ DO_BS          ; Handle backspace
+   fc4e   81 7f                 CMPA #DEL          ; Check for delete
+   fc50   27 1b                 BEQ DO_BS          ; Handle delete same as backspace
+   fc52   81 0d                 CMPA #CR           ; Check for carriage return
+   fc54   27 0c                 BEQ DO_CRLF        ; Handle CR+LF
+   fc56   81 1b                 CMPA #ESC          ; Check for ESC key
+   fc58   27 2e                 BEQ EXIT           ; If ESC, exit
+   fc5a   de 87                 LDX BUFEND         ; Get buffer end
+   fc5c   a7 00                 STAA 0,X           ; Store character
+   fc5e   08                    INX                ; Move pointer
+   fc5f   df 87                 STX BUFEND         ; Update buffer end
+   fc61   39                    RTS
+                        
+                        ; Handle CR+LF
+   fc62   86 0d         DO_CRLF LDAA #CR           ; Load CR
+   fc64   bd fc 1b              JSR CHROUT         ; Send CR
+   fc67   86 0a                 LDAA #LF           ; Load LF
+   fc69   bd fc 1b              JSR CHROUT         ; Send LF
+   fc6c   39                    RTS
+                        
+                        ; Handle backspace
+   fc6d   de 87         DO_BS   LDX BUFEND         ; Get buffer end
+   fc6f   9c 85                 CPX BUFST          ; At start of buffer?
+   fc71   27 0d                 BEQ BS_DONE        ; Yes, ignore backspace
+   fc73   09                    DEX                ; Move back one
+   fc74   df 87                 STX BUFEND         ; Update buffer end
+   fc76   86 20                 LDAA #SPACE        ; Send space
+   fc78   bd fc 1b              JSR CHROUT         ; Clear character
+   fc7b   86 08                 LDAA #BS           ; Send backspace sequence
+   fc7d   bd fc 1b              JSR CHROUT         ; Move cursor left
+   fc80   39            BS_DONE RTS
+                        
+                        ; Welcome message display
+   fc81   ce fc 93      WELCOME LDX #MSGWEL   ; Point to welcome message
+   fc84   bd fc 3d              JSR STROUT         ; Output it
+   fc87   39                    RTS
+                        
+                        ; Exit editor and halt
+   fc88   ce fc ef      EXIT    LDX #MSGEXI     ; Point to exit message
+   fc8b   bd fc 3d              JSR STROUT        ; Output it
+   fc8e   7e fc 91              JMP HALT          ; Go to halt routine
+                        
+                        ; Halt routine
+   fc91   3e            HALT    WAI               ; Wait for interrupt
+   fc92   39                    RTS
+                        
+                        ; Messages and Constants
+                        
+   fc93   53 65 72 69   MSGWEL  FCC 'Serial I/O test'
+   fc97   61 6c 20 49   
+   fc9b   2f 4f 20 74   
+   fc9f   65 73 74      
+   fca2   0d 0a                 FCB CR,LF
+   fca4   54 79 70 65           FCC 'Type text, ESC to exit'
+   fca8   20 74 65 78   
+   fcac   74 2c 20 45   
+   fcb0   53 43 20 74   
+   fcb4   6f 20 65 78   
+   fcb8   69 74         
+   fcba   0d 0a                 FCB CR,LF
+   fcbc   0d 0a                 FCB CR,LF
+   fcbe   41 42 43 44           FCC 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-=[];#,./\'
+   fcc2   45 46 47 48   
+   fcc6   49 4a 4b 4c   
+   fcca   4d 4e 4f 50   
+   fcce   51 52 53 54   
+   fcd2   55 56 57 58   
+   fcd6   59 5a 30 31   
+   fcda   32 33 34 35   
+   fcde   36 37 38 39   
+   fce2   2d 3d 5b 5d   
+   fce6   3b 23 2c 2e   
+   fcea   2f 5c         
+   fcec   0d 0a 00              FCB CR,LF,EOT
+   fcef                 MSGEXI  
+   fcef   45 45 78 69           FCC 'EExiting editor'           ;** I can't locate any bug that drops the 'E'
+   fcf3   74 69 6e 67   
+   fcf7   20 65 64 69   
+   fcfb   74 6f 72      
+   fcfe   0d 0a 00              FCB CR,LF,EOT                   ;** so the workaround is to add an extra!
+                        
+                        ; Buffer space
+   fd01                 LINEBUF RMB 80           ; 80 byte line buffer
+                        
+   fff8                         ORG $FFF8
+   fff8   fc 91                 FDB HALT         ; IRQ Vector
+   fffa   fc 91                 FDB HALT         ; SWI Vector
+   fffc   fc 91                 FDB HALT          ; NMI Vector
+   fffe   fc 00                 FDB START          ; Reset Vector
+                        
+   0000                         END
+0008  BS            fc80  BS_DONE       0087  BUFEND        0085  BUFST     
+fc1c  CHR01         fc33  CHRIN         fc28  CHRIN8        fc1b  CHROUT    
+000d  CR            0089  CURLINE       0080  CURPOS        007f  DEL       
+fc6d  DO_BS         fc62  DO_CRLF       008d  ECHOF         0000  EOT       
+001b  ESC           fc88  EXIT          fc91  HALT          000a  LF        
+fd01  LINEBUF       fc13  MAIN          fcef  MSGEXI        fc93  MSGWEL    
+fc3c  NOECHO        0020  SPACE         f87f  STACK         fc00  START     
+fc4a  STORE_CHAR    fc3d  STROUT        fc49  STROUT_DONE    f000  TERD      
+f001  TERS          008b  TOTLINE       fc81  WELCOME       
+
