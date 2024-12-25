@@ -1,7 +1,12 @@
 # 8031 Monitor by Frank Rudley
 
+https://www.rudley.com/0003-8031-Assembly-Language-Programming-Intro/0003-8031_Assembly_Language_Programming_Intro.html
+https://www.youtube.com/watch?v=rZYkIgfUyfw&ab_channel=FrankRudley
 
-
+See below for details. The original board and associated ROM here allows development of code for a switched EXT ROM/RAM.
+It would be interesting to develop this for the retroshield by adding the additional ROM/RAM space.
+Curently the functionality is limited to the INT ROM/RAM.
+Something to revisit at some point.
 
 ```
 ; MONITORA.ASM - Rev A Started 01/02/94
