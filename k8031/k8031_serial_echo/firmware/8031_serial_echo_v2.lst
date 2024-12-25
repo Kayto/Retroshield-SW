@@ -1,0 +1,89 @@
+                   ; File: 8031_serial_echo_v2.asm
+                   ; Title: Serial Echo Program with PAULMON2 autobaud 
+                   ; detection, message and CRLF handling
+                   ; Author: kayto@github.com
+                   ; Date: December 02, 2024
+                   ; Version: 1.0
+                   ; 
+                   ; Based on PAULMON2 by Paul Stoffregen
+                   ; Minimal implementation for Serial Echo with 
+                   ; CRLF handling
+                   ;
+0000:              .org    0x0000          ; Start at address 0x0000
+0000: 02 01 00     ljmp    start           ; Jump to main program
+                   
+                   
+                   ; PAULMON2 cout
+0030:              .org    0x0030          
+0030: 30 99 FD     cout:   jnb     ti, cout        ; Wait for transmit 
+                                                   ; buffer empty
+0033: C2 99                clr     ti              ; Clear transmit flag
+0035: F5 99                mov     sbuf, a         ; Send character
+0037: 22                   ret
+                   
+                   ; PAULMON2 cin
+0038:              .org    0x0038
+0038: 30 98 FD     cin:    jnb     ri, cin         ; Wait for receive 
+                                                   ; buffer full
+003B: C2 98                clr     ri              ; Clear receive flag
+003D: E5 99                mov     a, sbuf         ; Get character
+003F: 22                   ret
+                   
+                   ; PAULMON2 autobaud
+0042:              .org    0x0042          
+                   autobaud:
+0042: 75 87 80             mov     pcon, #0x80     ; Configure UART, 
+                                                   ; fast baud
+0045: 75 89 21             mov     tmod, #0x21     ; Timer 1, mode 2 
+                                                   ; (8-bit auto-reload)
+0048: 75 8D FF             mov     th1, #0xFF      ; Initial baud rate
+004B: 75 8B FF             mov     tl1, #0xFF      ; Start ASAP
+004E: 75 98 52             mov     scon, #0x52     ; Mode 1, receive enable
+0051: D2 9C                setb    ren             ; Enable serial receive
+0053: D2 8E                setb    tr1             ; Start timer 1
+0055: 22                   ret
+                   
+                   ; PAULMON2  pstr
+0056: E4           pstr:   clr     a               ; Clear accumulator
+0057: 93                   movc    a, @a+dptr      ; Get character from 
+                                                   ; code memory
+0058: 60 05                jz      pstr_done       ; If zero, we're done
+005A: 11 30                acall   cout            ; Output character
+005C: A3                   inc     dptr            ; Point to next character
+005D: 80 F7                sjmp    pstr            ; Loop for next character
+                           pstr_done:
+005F: 22                   ret        
+                   
+0080:              .org    0x0080                   ; Constants
+0080:              .equ    CR,      0x0D            ; Carriage Return
+0080:              .equ    LF,      0x0A            ; Line Feed
+                   
+0100:              .org    0x0100                   ; Main program start
+                   start:  
+0100: 11 42                acall   autobaud        ; Initialize serial port
+0102: 90 01 18             mov dptr, #welcome_msg
+0105: 11 56                acall pstr
+                   
+                   echo_loop:               
+0107: 11 38                acall   cin             ; Wait for character
+0109: B4 0D 08             cjne    a, #CR, not_cr  ; Check if character is CR
+010C: 11 30                acall   cout            ; Echo CR
+010E: 74 0A                mov     a, #LF          ; Send LF after CR
+0110: 11 30                acall   cout
+0112: 80 F3                sjmp    echo_loop       ; Get next character
+                   
+                   not_cr:
+0114: 11 30                acall   cout            ; Echo character as is
+0116: 80 EF                sjmp    echo_loop       ; Get next character
+                   
+                   welcome_msg:
+0118: 57 65 6C 63 
+      6F 6D 65 20 
+      74 6F 20 74 
+      68 65 20 53 
+      65 72 69 61 
+      6C 20 45 63 
+      68 6F 20 50 
+      72 6F 67 72 
+      61 6D 21 0D 
+      0A 00                .db "Welcome to the Serial Echo Program!", 13, 10, 0

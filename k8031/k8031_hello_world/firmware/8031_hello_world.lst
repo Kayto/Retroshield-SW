@@ -1,0 +1,58 @@
+                   ; File: 8031_hello_world.asm
+                   ; Title: Minimal implementation for Hello World
+                   ; Author: kayto@github.com
+                   ; Date: December 02, 2024
+                   ; Version: 1.0
+                   ; 
+                   ; Based on PAULMON2 by Paul Stoffregen
+                   ; 
+0000:              .org    0x0000          ; Start at address 0x0000
+0000: 02 00 29     ljmp    start           ; Jump to main program
+                   
+                   ; PAULMON2 standard location for cout
+                   ;.org    0x0030         
+0003: 30 99 FD     cout:   jnb ti, cout    ; Wait for transmit buffer empty
+0006: C2 99        clr     ti              ; Clear transmit flag
+0008: F5 99        mov     sbuf, a         ; Send character
+000A: 22           ret
+                   
+                   ; PAULMON2 standard location for pstr
+                   ;.org    0x0038   
+000B: E4           pstr:   clr     a       ; Clear accumulator
+000C: 93           movc    a, @a+dptr      ; Get character from code memory
+000D: 60 05        jz      pstr_done       ; If zero, we're done
+000F: 11 03        acall   cout            ; Output character
+0011: A3           inc     dptr            ; Point to next character
+0012: 80 F7        sjmp    pstr            ; Loop for next character
+                   pstr_done:
+0014: 22           ret
+                   
+                   ; PAULMON2 standard location for autobaud
+                   ;.org    0x0042         
+                   autobaud:
+0015: 75 87 80     mov     pcon, #0x80     ; Configure UART, fast baud
+0018: 75 89 21     mov     tmod, #0x21     ; Timer 1, mode 2 
+                                           ; (8-bit auto-reload)
+001B: 75 8D FF     mov     th1, #0xFF      ; Initial baud rate
+001E: 75 8B FF     mov     tl1, #0xFF      ; Start ASAP
+0021: 75 98 52     mov     scon, #0x52     ; Mode 1, receive enable
+0024: D2 9C        setb    ren             ; Enable serial receive
+0026: D2 8E        setb    tr1             ; Start timer 1
+0028: 22           ret
+                   
+                   ;.org    0x0100          ; Main program start
+                   start:  
+0029: 11 15        acall   autobaud        ; Initialize serial port
+002B: 90 00 32     mov     dptr, #msg      ; Point to message
+002E: 11 0B        acall   pstr            ; Print the string
+0030: 80 FE        here:   sjmp here       ; Loop forever
+                   
+                   ; Message with CR/LF and null terminator
+0032: 48 65 6C 6C 
+      6F 20 57 6F 
+      72 6C 64 20 
+      66 72 6F 6D 
+      20 38 30 33 
+      31 21 0D 0A 
+      00           msg:    .byte     "Hello World from 8031!",13,10,0
+                   

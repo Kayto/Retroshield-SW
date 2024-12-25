@@ -1,0 +1,166 @@
+                        ; File: 8031_serial_echo_v3.asm
+                   ; Title: Serial Echo Program with with welcome and exit
+                   ; messages, CRLF and backspace/delete handling
+                   ; Author: kayto@github.com
+                   ; Date: December 02, 2024
+                   ; Version: 1.0
+                   ;
+                   ; Based on PAULMON2 by Paul Stoffregen
+                   ; Implementation for Serial Echo with welcome and exit
+                   ; messages, CRLF and backspace/delete handling
+                   ;
+                   ; Constants for special characters
+0000:              .equ    BS, 0x08                ; ASCII Backspace (^H)
+0000:              .equ    DEL, 0x7F               ; ASCII Delete
+0000:              .equ    CR, 0x0D                ; ASCII Carriage Return
+0000:              .equ    LF, 0x0A                ; ASCII Line Feed
+0000:              .equ    SPACE, 0x20             ; ASCII Space
+0000:              .equ    ESC, 0x1B               ; ASCII Escape
+                   
+0000:              .org    0x0000                  ; Reset vector
+0000: 02 00 33             ljmp    start           ; Jump to main program
+                   
+                   ; PAULMON2 cout Output Routine
+                   cout:   
+0003: 30 99 FD             jnb     ti, cout        ; Wait for transmit 
+                                                   ; buffer empty
+0006: C2 99                clr     ti              ; Clear transmit flag
+0008: F5 99                mov     sbuf, a         ; Send character
+000A: 22                   ret
+                   
+                   ; PAULMON2 cin Input routine
+                   cin:    
+000B: 30 98 FD             jnb     ri, cin         ; Wait for receive 
+                                                   ; buffer full
+000E: C2 98                clr     ri              ; Clear receive flag        
+0010: E5 99                mov     a, sbuf         ; Get character
+0012: 22                   ret
+                   
+                   ; PAULMON2  autobaud
+                   uart:
+0013: 75 87 80             mov     pcon, #0x80     ; Configure UART, fast baud
+0016: 75 89 21             mov     tmod, #0x21     ; Timer 1, mode 2 
+                                                   ; (8-bit auto-reload)
+0019: 75 8D FF             mov     th1, #0xFF      ; Initial baud rate 
+                                                   ; (57600 @ 11.0592MHz)
+001C: 75 8B FF             mov     tl1, #0xFF      ; Start ASAP
+001F: 75 98 52             mov     scon, #0x52     ; Mode 1, receive enable
+0022: D2 9C                setb    ren             ; Enable serial receive
+0024: D2 8E                setb    tr1             ; Start timer 1
+0026: 22                   ret
+                   
+                   ; PAULMON2 Print string routine
+                   pstr:   
+                           ;push    acc             ; Save accumulator
+0027: E4                   clr     a               ; Clear accumulator for 
+                                                   ; first read
+0028: 93           pstr1:  movc    a, @a+dptr      ; Get character from 
+                                                   ; code memory
+0029: 60 07                jz      pstr_end        ; If zero, end of string
+002B: 12 00 03             lcall   cout            ; Print character
+002E: A3                   inc     dptr            ; Increment pointer
+002F: E4                   clr     a               ; Clear accumulator for 
+                                                   ; next read
+0030: 80 F6                sjmp    pstr1           ; Repeat
+                   pstr_end:
+                           ;pop     acc             ; Restore accumulator 
+0032: 22                   ret
+                   
+                   ; Main program start       
+                   start:  
+0033: 11 13                acall   uart            ; Initialize serial port
+                   entry:  
+0035: 90 00 BF             mov     dptr, #welcome_msg
+0038: 11 27                acall   pstr            ; Print welcome message 
+                                                   ; once at startup
+003A: 80 00                sjmp    echo_loop       ; Jump directly to echo loop
+                           
+                   echo_loop:               
+003C: 12 00 0B             lcall   cin             ; Get character
+                           ; Check for escape key
+003F: B4 1B 08             cjne    a, #ESC, not_esc
+0042: 90 00 91             mov     dptr, #exit_msg
+0045: 12 00 27             lcall   pstr            ; Print exit message
+0048: 80 30                sjmp    halt            ; Jump to halt label
+                   
+                   ; Character Handlers
+                   not_esc:
+                           ; First echo the character
+004A: 12 00 03             lcall   cout            ; Echo immediately
+                           ; Check for backspace or delete
+004D: B4 08 0C             cjne    a, #BS, not_bs
+0050: 74 20                mov     a, #SPACE       ; Send space to clear
+0052: 12 00 03             lcall   cout
+0055: 74 08                mov     a, #BS          ; Move cursor back
+0057: 12 00 03             lcall   cout
+005A: 80 E0                sjmp    echo_loop     
+                   not_bs:
+005C: B4 7F 11             cjne    a, #DEL, not_del
+005F: 74 08                mov     a, #BS          ; Send BS
+0061: 12 00 03             lcall   cout
+0064: 74 20                mov     a, #SPACE       ; Clear character
+0066: 12 00 03             lcall   cout
+0069: 74 08                mov     a, #BS          ; Move cursor back
+006B: 12 00 03             lcall   cout
+006E: 80 CC                sjmp    echo_loop       
+                   not_del:
+                           ; Check for CR to add LF
+0070: B4 0D C9             cjne    a, #CR, echo_loop
+0073: 74 0A                mov     a, #LF
+0075: 12 00 03             lcall   cout
+0078: 80 C2                sjmp    echo_loop       ; Return to echo loop 
+                                                   ; without printing welcome
+                   
+                   ; EXIT handler
+                   halt:
+007A: 11 88                acall   delay
+007C: 74 0D                mov     a, #CR          ; Send CR
+007E: 12 00 03             lcall   cout
+0081: 74 0A                mov     a, #LF          ; Send LF
+0083: 12 00 03             lcall   cout
+0086: 80 AD                sjmp    entry           ; delay on exit and restart 
+                   
+                   ; Delay subroutine
+                   delay:
+0088: 79 FF                mov R1, #255     ; Outer loop counter (10 × 1 ms = 
+                   outer_loop:
+008A: 78 FF                mov r0 , #255   ; Inner loop counter (100 × 10 µs 
+                   inner_loop:
+008C: D8 FE                djnz R0, inner_loop ; Decrement R0 until it reaches 
+008E: D9 FA                djnz R1, outer_loop ; Decrement R1 until it reaches 
+0090: 22                   ret             ; Return from subroutine
+                   
+                   ; Messages
+                   exit_msg:
+0091: 0D 0A 45 78 
+      69 74 69 6E 
+      67 20 74 68 
+      65 20 53 65 
+      72 69 61 6C 
+      20 45 63 68 
+      6F 20 50 72 
+      6F 67 72 61 
+      6D 2E 20 47 
+      6F 6F 64 62 
+      79 65 21 0D 
+      0A 00                .byte CR, LF,"Exiting the Serial Echo Program. Goodb
+                       
+                   welcome_msg:
+00BF: 57 65 6C 63 
+      6F 6D 65 20 
+      74 6F 20 74 
+      68 65 20 53 
+      65 72 69 61 
+      6C 20 45 63 
+      68 6F 20 50 
+      72 6F 67 72 
+      61 6D 21 0D 
+      0A                   .byte "Welcome to the Serial Echo Program!", CR, LF
+00E4: 54 79 70 65 
+      20 74 65 78 
+      74 2C 20 74 
+      79 70 65 20 
+      45 53 43 20 
+      74 6F 20 65 
+      78 69 74 2E 
+      0D 0A 00             .byte "Type text, type ESC to exit.", CR, LF, 0
