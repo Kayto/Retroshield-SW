@@ -4,7 +4,8 @@ https://www.rudley.com/0003-8031-Assembly-Language-Programming-Intro/0003-8031_A
 https://www.youtube.com/watch?v=rZYkIgfUyfw&ab_channel=FrankRudley
 
 See below for details. 
-Something to revisit at some point as I have not quite worked out the functionality of the original board.
+Something to revisit at some point.
+Some useful routines for display of the internal RAM and SFR area.
 
 ```
 ; MONITORA.ASM - Rev A Started 01/02/94
