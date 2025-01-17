@@ -1,0 +1,1042 @@
+                   ; ** 8031_AT_MON.ASM - Rev A modified for Retroshield 25/12/
+                   ; ** Based on MONITORB.ASM - Rev B Started 01/31/21 
+                   ; ** by Frank Rudley
+                   ; ** converted to asm31-sdcc231-pj3 asm 
+                   ;
+                   ; ** AT_MON.ASM Comments
+                   ; 8031 Monitor Program
+                   ;
+                   ; This is a Monitor Program for the 8031 Microcontroller
+                   ; It is based on the Monitor Program by Frank Rudley
+                   ; It is modified to work with the Retroshield
+                   ;
+                   ; Usage:
+                   ; - I: Read/Write Internal RAM
+                   ; - E: Read/Write External RAM
+                   ; - S: Display Special Function Registers (SFRs)
+                   ; - B: Display 256-byte block of ROM/RAM
+                   ; - R: Display 128-byte block of Internal RAM
+                   ; - C: Check External RAM
+                   ; - F: Fill External RAM
+                   ; - J: Jump to run programs - in progress
+                   ; - L: Load HEX file for programs - in progress
+                   ; - N: List menu
+                   ;
+0000:              .equ    BITRATE, 0xFF   ; For 57600 @ 11.0592MHz
+0000:              .equ    EXIT, 81
+0000:              .equ    exitlc, 113
+0000:              .equ    CKSUM, 0x10
+0000:              .equ    NEWPROG, 0x2000
+0000:              .equ    LF, 10
+0000:              .equ    CR, 13
+0000:              .equ    NULL, 0x00
+                   ;
+                   ; Setup Serial Stuff
+                   ;
+0000: 75 87 80             mov    pcon, #0x80     ; Configure UART, fast baud
+0003: 75 89 21             MOV    TMOD, #0x21     ; T1 Mode Auto Reload Mode
+0006: 75 8D FF             MOV    TH1, #BITRATE   ; Set baud rate
+0009: 75 8B FF             MOV    TL1, #BITRATE   ; Set baud rate
+                   ;
+                   ; Serial in Mode 1, Enable Serial reception, Set TI
+                   ;
+000C: 75 98 52             MOV    SCON, #0x52     ; Serial mode 1, enable recep
+000F: D2 8E                SETB   TR1             ; Start Timer for Serial Port
+                   ;
+0011: 12 07 57     MENU:   LCALL  WT_STRING
+0014: 38 30 33 31 
+      20 41 54 28 
+      40 29 5F 4D 
+      4F 4E 49 54 
+      4F 52 0A 0D 
+                           .db     "8031 AT(@)_MONITOR",LF,CR 
+0028: 42 61 73 65 
+      64 20 6F 6E 
+      20 38 30 33 
+      31 20 4D 4F 
+      4E 49 54 4F 
+      52 20 52 65 
+      76 20 42 0A 
+      0D                   .db     "Based on 8031 MONITOR Rev B",LF,CR 
+0045: 62 79 20 46 
+      72 61 6E 6B 
+      20 52 75 64 
+      6C 65 79 0A 
+      0D                   .db     "by Frank Rudley",LF,CR
+0056: 00                   .db     NULL
+                   
+                   ;        ACALL  RAM_CHECK
+                   ;        ACALL  CLR_RAM
+                   ;
+0057: 12 07 57     GETSEL: LCALL  WT_STRING
+005A: 0A 0D 38 30 
+      33 31 3E             .db     LF,CR,"8031>"     ; Prompt
+0061: 00                   .db     NULL
+                   ;
+0062: 12 07 6D             LCALL  RD_CHAR
+                   ;
+0065: 54 5F                ANL    A,#0x5F      ; Upcase, Strip Parity
+                   ;
+0067: B4 49 03     R_TEST: CJNE   A,#'I',O_TEST; If Not I, Then Repeat Menu
+006A: 12 00 A9             LCALL  R_RUN        ; I, So Run Read Internal RAM
+                   ;
+006D: B4 45 03     O_TEST: CJNE   A,#'E',S_TEST; If Not E, Then Repeat Menu
+0070: 12 01 9F             LCALL  O_RUN        ; E, So Run Read ROM
+                   ;
+0073: B4 53 03     S_TEST: CJNE   A,#'S',B_TEST; If Not S, Then Repeat Menu
+0076: 12 02 90             LCALL  S_RUN        ; S, So Display SFRs
+                   ;
+0079: B4 42 03     B_TEST: CJNE   A,#'B',D_TEST; If Not B, Then Repeat Menu
+007C: 12 03 9A             LCALL  B_RUN        ; B, Display 256 byte Block of R
+                   ;
+007F: B4 52 03     D_TEST: CJNE   A,#'R',J_TEST; If Not R, Then Repeat Menu
+0082: 12 04 40             LCALL  D_RUN        ; R, Display 128 byte Block of i
+                   ;
+0085: B4 4A 03     J_TEST: CJNE   A,#'J',E_TEST; If Not J, Then Repeat Menu
+0088: 12 05 E0             LCALL  J_RUN        ; J, Then Jump to New Program at
+                   ;
+008B: B4 4C 03     E_TEST: CJNE   A,#'L',N_TEST; If Not L, Then Repeat Menu
+008E: 12 05 E3             LCALL  E_RUN        ; L, Allow Upload of Hex File
+                   ;
+0091: B4 48 03     N_TEST: CJNE   A,#'H',C_TEST; If Not N, Then Repeat Menu
+0094: 12 06 42             LCALL  N_RUN        ; N, Then List Menu
+                   ;
+0097: B4 43 03     C_TEST: CJNE   A,#'C',F_TEST; If Not C, Then Repeat Menu
+009A: 12 07 BF             LCALL  RAM_CHK      ; C, Then Check RAM
+                   ;
+009D: B4 46 03     F_TEST: CJNE   A,#'F',J_MENU; If Not F, Then Repeat Menu
+00A0: 12 08 92             LCALL  CLR_RAM      ; F, Then Clear RAM
+                   ;
+00A3: 12 07 B3     J_MENU: LCALL  WAIT         ; Wait then show menu
+00A6: 02 00 11             LJMP   MENU
+                   ;
+00A9: 12 07 57     R_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+00AC: 2D 45 64 69 
+      74 20 49 6E 
+      74 65 72 6E 
+      61 6C 20 52 
+      41 4D 20 24 
+      30 30 20 74 
+      6F 20 24 37 
+      46 2E 0A 0D 
+                           .db     "-Edit Internal RAM $00 to $7F.",LF,CR
+00CC: 45 6E 74 65 
+      72 20 53 74 
+      61 72 74 20 
+      41 64 64 72 
+      65 73 73 20 
+      69 6E 20 48 
+      65 78 20 28 
+      78 78 29 3A 
+      20                   .db     "Enter Start Address in Hex (xx): "
+00ED: 00                   .db     NULL
+00EE: 12 07 37             LCALL  READHEX         ; Read a hexadecimal address
+00F1: F8                   MOV    R0,A            ; Move address to register R0
+00F2: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+00F5: 12 07 57             LCALL  WT_STRING       ; Call subroutine to write a 
+00F8: 45 6E 74 65 
+      72 20 6E 65 
+      77 20 64 61 
+      74 61 20 61 
+      66 74 65 72 
+      20 70 72 6F 
+      6D 70 74 20 
+      27 3E 27 0A 
+      0D                   .db     "Enter new data after prompt '>'",LF,CR
+0119: 3C 43 52 3E 
+      20 74 6F 20 
+      73 6B 69 70 
+      20 61 64 64 
+      72 65 73 73 
+      2C 20 3C 51 
+      3E 20 74 6F 
+      20 65 78 69 
+      74 2E 0A 0D 
+                           .db     "<CR> to skip address, <Q> to exit.",LF,CR
+013D: 00                   .db     NULL
+013E: E8           R_1:    MOV    A,R0
+013F: 12 07 47             LCALL  WRBYTE          ; Write the address to termin
+0142: 74 3A                MOV    A,#':'
+0144: 12 07 7A             LCALL  WT_CHAR         ; Write a colon character
+0147: E6                   MOV    A,@R0           ; Move value at address to ac
+0148: 12 07 47             LCALL  WRBYTE          ; Write the value to terminal
+014B: 12 07 57             LCALL  WT_STRING       ; Prompt for new data
+014E: 20 3E 20             .db     " > "
+0151: 00                   .db     NULL
+0152: 12 07 6D             LCALL  RD_CHAR         ; Read a character from termi
+0155: B4 0D 02             CJNE   A,#CR,READ_NEW ; If not CR, read new data
+0158: 80 1E                SJMP   SKIP_WR         ; If CR, skip writing new dat
+                   READ_NEW:
+015A: B4 51 02             CJNE   A,#EXIT,CHK_LC ; If not uppercase EXIT, check
+015D: 80 03                SJMP   EXIT_RT
+                   CHK_LC:
+015F: B4 71 06             CJNE   A,#exitlc,CONT_RD  ; If not lowercase 'q', co
+                   EXIT_RT:
+0162: 12 07 A8             LCALL  LFCR
+0165: 02 00 57             LJMP   GETSEL          ; If EXIT, exit to GETSEL
+                   CONT_RD:
+0168: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+016B: C4                   SWAP   A
+016C: FA                   MOV    R2,A            ; Store upper nibble
+016D: 12 07 6D             LCALL  RD_CHAR         ; Read next character
+0170: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+0173: 4A                   ORL    A,R2            ; Combine nibbles
+0174: F6                   MOV    @R0,A           ; Write new data to address
+0175: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+                   SKIP_WR:
+0178: 08                   INC    R0              ; Increment address in R0
+0179: E8                   MOV    A,R0
+017A: B8 80 C1             CJNE   R0,#080H,R_1    ; If not 0x80, repeat loop
+                           ;LCALL  WAIT            ; Delay for serial
+017D: 12 07 A8             LCALL  LFCR
+0180: 02 00 57             LJMP   GETSEL          ; Exit to GETSEL
+                   ;
+0183: 12 07 57     W_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+0186: 2D 52 41 4D 
+      3E                   .db     "-RAM>"
+018B: 00                   .db     NULL
+018C: 12 07 37             LCALL  READHEX         ; Read a hexadecimal address
+018F: F8                   MOV    R0,A            ; Move address to register R0
+0190: 74 3A                MOV    A,#':'          ; Write a colon character
+0192: 12 07 7A             LCALL  WT_CHAR
+0195: 12 07 37             LCALL  READHEX         ; Read data
+0198: F6                   MOV    @R0,A           ; Write data to address
+0199: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+019C: 02 00 57             LJMP   GETSEL          ; Exit to GETSEL
+                   ;
+019F: 12 07 57     O_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+01A2: 2D 45 64 69 
+      74 20 45 78 
+      74 65 72 6E 
+      61 6C 20 52 
+      41 4D 0A 0D 
+                           .db     "-Edit External RAM",LF,CR
+01B6: 45 6E 74 65 
+      72 20 53 74 
+      61 72 74 20 
+      41 64 64 72 
+      65 73 73 20 
+      69 6E 20 48 
+      65 78 20 28 
+      78 78 78 78 
+      29 3A 20             .db     "Enter Start Address in Hex (xxxx): "
+01D9: 00                   .db     NULL
+01DA: 12 07 37             LCALL  READHEX         ; Read high byte of address
+01DD: F5 83                MOV    DPH, A          ; Move high byte to DPH
+01DF: 12 07 37             LCALL  READHEX         ; Read low byte of address
+01E2: F5 82                MOV    DPL, A          ; Move low byte to DPL
+01E4: AB 83                MOV    R3, DPH         ; Store DPH in R3
+01E6: AC 82                MOV    R4, DPL         ; Store DPL in R4
+01E8: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+01EB: 12 07 57             LCALL  WT_STRING       ; Call subroutine to write a 
+01EE: 45 6E 74 65 
+      72 20 6E 65 
+      77 20 64 61 
+      74 61 20 61 
+      66 74 65 72 
+      20 70 72 6F 
+      6D 70 74 20 
+      27 3E 27 0A 
+      0D                   .db     "Enter new data after prompt '>'",LF,CR
+020F: 3C 43 52 3E 
+      20 74 6F 20 
+      73 6B 69 70 
+      20 61 64 64 
+      72 65 73 73 
+      2C 20 3C 51 
+      3E 20 74 6F 
+      20 65 78 69 
+      74 2E 0A 0D 
+                           .db     "<CR> to skip address, <Q> to exit.",LF,CR
+0233: 00                   .db     NULL
+0234: 8B 83        O_1:    MOV    DPH, R3         ; Restore DPH
+0236: 8C 82                MOV    DPL, R4         ; Restore DPL
+0238: E5 83                MOV    A, DPH
+023A: 12 07 47             LCALL  WRBYTE          ; Write high byte of address 
+023D: E5 82                MOV    A, DPL
+023F: 12 07 47             LCALL  WRBYTE          ; Write low byte of address t
+0242: 74 3A                MOV    A, #':'
+0244: 12 07 7A             LCALL  WT_CHAR         ; Write a colon character
+0247: E4                   CLR    A
+0248: E0                   MOVX   A, @DPTR        ; Move value at address to ac
+0249: 12 07 47             LCALL  WRBYTE          ; Write the value to terminal
+024C: AB 83                MOV    R3, DPH         ; Store DPH in R3
+024E: AC 82                MOV    R4, DPL         ; Store DPL in R4
+0250: 12 07 57             LCALL  WT_STRING       ; Prompt for new data
+0253: 20 3E 20             .db     " > "
+0256: 00                   .db     NULL
+0257: 8B 83                MOV    DPH, R3         ; Restore DPH
+0259: 8C 82                MOV    DPL, R4         ; Restore DPL
+025B: 12 07 6D             LCALL  RD_CHAR         ; Read a character from termi
+025E: B4 0D 02             CJNE   A, #CR,READ_NEW_O ; If not CR, read new data
+0261: 80 1E                SJMP   SKIP_WR_O       ; If CR, skip writing new dat
+                   READ_NEW_O:
+0263: B4 51 02             CJNE   A,#EXIT,CHK_LC_O ; If not uppercase EXIT, che
+0266: 80 03                SJMP   EXIT_RT_O
+                   CHK_LC_O:
+0268: B4 71 06             CJNE   A,#exitlc,CONT_RD_O  ; If not lowercase 'q', 
+                   EXIT_RT_O:
+026B: 12 07 A8             LCALL  LFCR            ; Delay for serial
+026E: 02 00 57             LJMP   GETSEL          ; If EXIT, exit to GETSEL
+                   CONT_RD_O:
+0271: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+0274: C4                   SWAP   A
+0275: FA                   MOV    R2, A           ; Store upper nibble
+0276: 12 07 6D             LCALL  RD_CHAR         ; Read next character
+0279: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+027C: 4A                   ORL    A, R2           ; Combine nibbles
+027D: F0                   MOVX   @DPTR, A        ; Write new data to address
+027E: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+                   SKIP_WR_O:
+0281: 05 82                INC    DPL             ; Increment low byte of addre
+0283: E5 82                MOV    A, DPL
+0285: B4 00 02             CJNE   A, #00H, O_2    ; If not 0x00, repeat loop
+0288: 05 83                INC    DPH             ; Increment high byte of addr
+028A: AB 83        O_2:    MOV    R3, DPH         ; Store DPH in R3
+028C: AC 82                MOV    R4, DPL         ; Store DPL in R4
+028E: 80 A4                SJMP   O_1             ; Repeat loop
+                   ;
+                   ; Display P0
+                   ;
+0290: 12 07 57     S_RUN:  LCALL  WT_STRING       ; Display SFR Routine
+0293: 53 46 52 73 
+      0A 0A 0A 0D 
+                           .db     "SFRs",LF,LF,LF,CR
+029B: 50 30 20 20 
+      20 3D 20             .db     "P0   = "
+02A2: 00                   .db     NULL
+02A3: E5 80                MOV    A,P0
+02A5: 12 07 47             LCALL  WRBYTE          ; Display P0
+                   ;
+                   ; Display P1
+                   ;
+02A8: 12 07 57             LCALL  WT_STRING
+02AB: 20 20 20 20 
+      50 31 20 20 
+      20 3D 20             .db     "    P1   = "
+02B6: 00                   .db     NULL
+02B7: E5 90                MOV    A,P1
+02B9: 12 07 47             LCALL  WRBYTE          ; Display P1
+                   ;
+                   ; Display P2
+                   ;
+02BC: 12 07 57             LCALL  WT_STRING
+02BF: 20 20 20 20 
+      50 32 20 20 
+      20 3D 20             .db     "    P2   = "
+02CA: 00                   .db     NULL
+02CB: E5 A0                MOV    A,P2
+02CD: 12 07 47             LCALL  WRBYTE          ; Display P2
+                   ;
+                   ; Display P3
+                   ;
+02D0: 12 07 57             LCALL  WT_STRING
+02D3: 20 20 20 20 
+      50 33 20 20 
+      20 3D 20             .db     "    P3   = "
+02DE: 00                   .db     NULL
+02DF: E5 B0                MOV    A,P3
+02E1: 12 07 47             LCALL  WRBYTE          ; Display P3
+                   ;
+                   ; Display TMOD
+                   ;
+02E4: 12 07 57             LCALL  WT_STRING
+02E7: 0A 0D 54 4D 
+      4F 44 20 3D 
+      20                   .db     LF,CR,"TMOD = "
+02F0: 00                   .db     NULL
+02F1: E5 89                MOV    A,TMOD
+02F3: 12 07 47             LCALL  WRBYTE          ; Display TMOD
+                   ;
+                   ; Display TCON
+                   ;
+02F6: 12 07 57             LCALL  WT_STRING
+02F9: 20 20 20 20 
+      54 43 4F 4E 
+      20 3D 20             .db     "    TCON = "
+0304: 00                   .db     NULL
+0305: E5 88                MOV    A,TCON
+0307: 12 07 47             LCALL  WRBYTE          ; Display TCON
+                   ; 
+                   ; Display SCON
+                   ;
+030A: 12 07 57             LCALL  WT_STRING
+030D: 20 20 20 20 
+      53 43 4F 4E 
+      20 3D 20             .db     "    SCON = "
+0318: 00                   .db     NULL
+0319: E5 98                MOV    A,SCON
+031B: 12 07 47             LCALL  WRBYTE          ; Display SCON
+                   ;
+                   ; Display PSW
+                   ;
+031E: 12 07 57             LCALL  WT_STRING
+0321: 20 20 20 20 
+      50 53 57 20 
+      20 3D 20             .db     "    PSW  = "
+032C: 00                   .db     NULL
+032D: E5 D0                MOV    A,PSW
+032F: 12 07 47             LCALL  WRBYTE          ; Display PSW
+                   ;
+                   ; Display PCON
+                   ;
+0332: 12 07 57             LCALL  WT_STRING
+0335: 0A 0D 50 43 
+      4F 4E 20 3D 
+      20                   .db     LF,CR,"PCON = "
+033E: 00                   .db     NULL
+033F: E5 87                MOV    A,PCON
+0341: 12 07 47             LCALL  WRBYTE          ; Display PCON
+                   ;
+                   ; Display TH0
+                   ;
+0344: 12 07 57             LCALL  WT_STRING
+0347: 20 20 20 20 
+      54 48 30 20 
+      20 3D 20             .db     "    TH0  = "
+0352: 00                   .db     NULL
+0353: E5 8C                MOV    A,TH0
+0355: 12 07 47             LCALL  WRBYTE          ; Display TH0
+                   ;
+                   ; Display TL0
+                   ;
+0358: 12 07 57             LCALL  WT_STRING
+035B: 20 20 20 20 
+      54 4C 30 20 
+      20 3D 20             .db     "    TL0  = "
+0366: 00                   .db     NULL
+0367: E5 8A                MOV    A,TL0
+0369: 12 07 47             LCALL  WRBYTE          ; Display TL0
+                   ;
+                   ; Display TH1
+                   ;
+036C: 12 07 57             LCALL  WT_STRING
+036F: 20 20 20 20 
+      54 48 31 20 
+      20 3D 20             .db     "    TH1  = "
+037A: 00                   .db     NULL
+037B: E5 8D                MOV    A,TH1
+037D: 12 07 47             LCALL  WRBYTE          ; Display TH1
+                   ;
+                   ; Display TL1
+                   ;
+0380: 12 07 57             LCALL  WT_STRING
+0383: 20 20 20 20 
+      54 4C 31 20 
+      20 3D 20             .db     "    TL1  = "
+038E: 00                   .db     NULL
+038F: E5 8B                MOV    A,TL1
+0391: 12 07 47             LCALL  WRBYTE          ; Display TL1
+0394: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+0397: 02 00 57             LJMP   GETSEL          ; Exit to GETSEL
+                   ;
+039A: 12 07 57     B_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+039D: 2D 4C 69 73 
+      74 20 61 20 
+      32 35 36 20 
+      42 79 74 65 
+      20 42 6C 6F 
+      63 6B 20 6F 
+      66 20 52 4F 
+      4D 2F 52 41 
+      4D 0A 0A 0D 
+                           .db     "-List a 256 Byte Block of ROM/RAM",LF,LF,CR
+03C1: 42 6C 6F 63 
+      6B 3E                .db     "Block>"
+03C7: 00                   .db     NULL
+03C8: 12 07 37             LCALL  READHEX         ; Read high byte of address
+03CB: F9                   MOV    R1,A            ; Move high byte to R1
+03CC: 12 07 57             LCALL  WT_STRING       ; Call subroutine to write a 
+03CF: 0A 0D 20 20 
+      20 20 20 20 
+      30 30 20 30 
+      31 20 30 32 
+      20 30 33 20 
+      30 34 20 30 
+      35 20 30 36 
+      20 30 37 20 
+      30 38 20 30 
+      39 20 30 41 
+      20 30 42 20 
+      30 43 20 30 
+      44 20 30 45 
+      20 30 46 0A 
+      0D                   .db     LF,CR,"      00 01 02 03 04 05 06 07 08 09 0
+0408: 00                   .db     NULL
+0409: 89 83                MOV    DPH,R1          ; Move high byte to DPH
+040B: 78 00                MOV    R0,#00H         ; Initialize R0 to 0
+040D: 88 82        B_2:    MOV    DPL,R0          ; Move low byte to DPL
+040F: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+0412: E5 83                MOV    A,DPH
+0414: 12 07 47             LCALL  WRBYTE          ; Write high byte of address 
+0417: E5 82                MOV    A,DPL
+0419: 12 07 47             LCALL  WRBYTE          ; Write low byte of address t
+041C: 74 20                MOV    A,#' '
+041E: 12 07 7A             LCALL  WT_CHAR         ; Write a space character
+0421: 12 07 7A             LCALL  WT_CHAR         ; Write another space charact
+0424: 88 82        B_1:    MOV    DPL,R0   
+0426: E4                   CLR    A
+0427: 93                   MOVC   A,@A+DPTR       ; Read ROM
+0428: 12 07 47             LCALL  WRBYTE          ; Write the value to terminal
+042B: 74 20                MOV    A,#' '
+042D: 12 07 7A             LCALL  WT_CHAR         ; Write a space character
+0430: 08                   INC    R0              ; Increment R0
+0431: E8                   MOV    A,R0
+0432: 54 0F                ANL    A,#00FH
+0434: B4 00 ED             CJNE   A,#000H,B_1     ; If not end of line, repeat 
+0437: B8 00 D3             CJNE   R0,#000H,B_2    ; If not end of block, repeat
+043A: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+043D: 02 00 57             LJMP   GETSEL          ; Exit to GETSEL
+                   ;
+0440: 12 07 57     D_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+0443: 2D 4C 69 73 
+      74 20 74 68 
+      65 20 31 32 
+      38 20 42 79 
+      74 65 20 42 
+      6C 6F 63 6B 
+      20 6F 66 20 
+      49 6E 74 65 
+      72 6E 61 6C 
+      20 52 41 4D 
+      0A 0D                .db     "-List the 128 Byte Block of Internal RAM",L
+046D: 0A 0D 20 20 
+      20 20 34 20 
+      42 41 4E 4B 
+      53 20 4F 46 
+      20 38 20 52 
+      45 47 49 53 
+      54 45 52 53 
+      20 28 52 30 
+      2D 52 37 29 
+      0A 0D                .db     LF,CR,"    4 BANKS OF 8 REGISTERS (R0-R7)",L
+0493: 20 20 20 20 
+      30 30 20 30 
+      31 20 30 32 
+      20 30 33 20 
+      30 34 20 30 
+      35 20 30 36 
+      20 30 37 20 
+      30 38 20 30 
+      39 20 30 41 
+      20 30 42 20 
+      30 43 20 30 
+      44 20 30 45 
+      20 30 46 0A 
+      0D                   .db     "    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 
+04C8: 20 20 20 20 
+      52 30 20 52 
+      31 20 52 32 
+      20 52 33 20 
+      52 34 20 52 
+      35 20 52 36 
+      20 52 37 20 
+      52 30 20 52 
+      31 20 52 32 
+      20 52 33 20 
+      52 34 20 52 
+      35 20 52 36 
+      20 52 37 0A 
+      0D                   .db     "    R0 R1 R2 R3 R4 R5 R6 R7 R0 R1 R2 R3 R4 
+04FD: 00                   .db     NULL
+04FE: 78 00                MOV    R0,#00H         ; Initialize R0 to 0
+0500: 12 07 A8     D_2:    LCALL  LFCR            ; Send line feed and carriage
+0503: B8 20 59             CJNE   R0,#020H,SKIP_20 ; If not address 20, skip pl
+0506: 12 07 57             LCALL  WT_STRING       ; Placeholder for new string
+0509: 0A 0D 20 20 
+      20 20 42 49 
+      54 2D 41 44 
+      44 52 45 53 
+      53 41 42 4C 
+      45 20 53 50 
+      41 43 45 0A 
+      0D                   .db     LF,CR,"    BIT-ADDRESSABLE SPACE",LF,CR
+0526: 20 20 20 20 
+      30 30 20 30 
+      31 20 30 32 
+      20 30 33 20 
+      30 34 20 30 
+      35 20 30 36 
+      20 30 37 20 
+      30 38 20 30 
+      39 20 30 41 
+      20 30 42 20 
+      30 43 20 30 
+      44 20 30 45 
+      20 30 46 0A 
+      0D                   .db     "    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 
+055B: 00                   .db     NULL
+055C: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+                   SKIP_20:
+055F: B8 30 53             CJNE   R0,#030H,SKIP_30 ; If not address 30, skip pl
+0562: 12 07 57             LCALL  WT_STRING       ; Placeholder for new string
+0565: 0A 0D 20 20 
+      20 20 53 43 
+      52 41 54 43 
+      48 50 41 44 
+      20 41 52 45 
+      41 0A 0D             .db     LF,CR,"    SCRATCHPAD AREA",LF,CR
+057C: 20 20 20 20 
+      30 30 20 30 
+      31 20 30 32 
+      20 30 33 20 
+      30 34 20 30 
+      35 20 30 36 
+      20 30 37 20 
+      30 38 20 30 
+      39 20 30 41 
+      20 30 42 20 
+      30 43 20 30 
+      44 20 30 45 
+      20 30 46 0A 
+      0D                   .db     "    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 
+05B1: 00                   .db     NULL
+05B2: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+                   SKIP_30:
+05B5: E8                   MOV    A,R0
+05B6: 12 07 47             LCALL  WRBYTE          ; Write high byte of address 
+05B9: 74 20                MOV    A,#' '
+05BB: 12 07 7A             LCALL  WT_CHAR         ; Write a space character
+05BE: 12 07 7A             LCALL  WT_CHAR         ; Write another space charact
+05C1: E6           D_1:    MOV    A,@R0           ; Read internal RAM
+05C2: 12 07 47             LCALL  WRBYTE          ; Write the value to terminal
+05C5: 74 20                MOV    A,#' '
+05C7: 12 07 7A             LCALL  WT_CHAR         ; Write a space character
+05CA: 08                   INC    R0              ; Increment R0
+05CB: E8                   MOV    A,R0
+05CC: 54 0F                ANL    A,#00FH
+05CE: B4 00 F0             CJNE   A,#000H,D_1     ; If not end of line, repeat 
+05D1: E8                   MOV    A,R0
+05D2: B4 80 02             CJNE   A,#080H,CONT_D2 ; If not end of block, contin
+05D5: 80 03                SJMP   END_D2          ; If end of block, jump to en
+                   CONT_D2:
+05D7: 02 05 00             LJMP   D_2             ; Continue loop
+                   END_D2:
+05DA: 12 07 A8             LCALL  LFCR            ; Send line feed and carriage
+05DD: 02 00 57             LJMP   GETSEL          ; Exit to GETSEL
+                   ;
+05E0: 02 20 00     J_RUN:  LJMP   NEWPROG
+                   ;
+05E3: 12 07 57     E_RUN:  LCALL  WT_STRING       ; Call subroutine to write a 
+05E6: 2D 55 70 6C 
+      6F 61 64 20 
+      48 65 78 20 
+      46 69 6C 65 
+      0A 0D                .db     "-Upload Hex File",LF,CR
+05F8: 00                   .db     NULL
+                   ;
+05F9: 12 07 6D     E_1:    LCALL  RD_CHAR
+05FC: B4 3A 3D             CJNE   A,#':',E_X ; Exit if not a ":"
+                   ;
+05FF: 12 07 37             LCALL  READHEX    ; Get Word Count
+0602: F9                   MOV    R1,A       ; Load Word Count to R1
+                   ;
+0603: 12 07 37             LCALL  READHEX    ; Read Address and put into Data P
+0606: F5 83                MOV    DPH,A      ; Upper Byte
+                   ;
+0608: 12 07 37             LCALL  READHEX    ; Lower Byte
+060B: F5 82                MOV    DPL,A
+                   ;
+060D: 12 07 37             LCALL  READHEX    ; Read Record Type
+0610: B4 00 12             CJNE   A,#0,E_Y   ; Done and Exit
+                   ;
+0613: 12 07 37     E_2:    LCALL  READHEX    ; Read Data
+0616: F0                   MOVX   @DPTR,A    ; Burn ROM
+0617: 12 07 B3             LCALL  WAIT       ; Wait for Burn Time
+061A: A3                   INC    DPTR       ; Increment Data Pointer
+061B: D9 F6                DJNZ   R1,E_2     ; Loop Till Out of Words
+061D: 12 07 37             LCALL  READHEX    ; Read Checksum but don't do anyth
+0620: 12 07 A8             LCALL  LFCR
+0623: 80 D4                SJMP   E_1
+                   ;
+                   ; Done and Exit Read Last Byte
+                   ;
+0625: 12 07 37     E_Y:    LCALL  READHEX
+0628: 12 07 57             LCALL  WT_STRING
+062B: 0A 0D 44 4F 
+      4E 45 20 4C 
+      4F 41 44 21 
+      21 20 0A 0D 
+                           .db     LF,CR,"DONE LOAD!! ",LF,CR
+063B: 00                   .db     NULL
+063C: 12 07 A8     E_X:    LCALL  LFCR
+063F: 02 00 57             LJMP   GETSEL
+                   ;
+                   ; List Out The Menu
+                   ;
+0642: 12 07 57     N_RUN:  LCALL  WT_STRING
+0645: 0A 0D 49 20 
+      3D 20 52 65 
+      61 64 2F 57 
+      72 69 74 65 
+      20 49 6E 74 
+      20 52 41 4D 
+      0A 0D                .db     LF,CR,"I = Read/Write Int RAM",LF,CR ;keep
+065F: 45 20 3D 20 
+      52 65 61 64 
+      2F 57 72 69 
+      74 65 20 45 
+      78 74 20 52 
+      41 4D 0A 0D 
+                           .db           "E = Read/Write Ext RAM",LF,CR;keep
+0677: 53 20 3D 20 
+      44 69 73 70 
+      6C 61 79 20 
+      53 46 52 73 
+      0A 0D                .db           "S = Display SFRs",LF,CR ;keep
+0689: 42 20 3D 20 
+      4C 69 73 74 
+      20 32 35 36 
+      20 62 79 74 
+      65 73 20 6F 
+      66 20 45 58 
+      54 20 52 4F 
+      4D 2F 52 41 
+      4D 0A 0D             .db           "B = List 256 bytes of EXT ROM/RAM",LF
+06AC: 52 20 3D 20 
+      4C 69 73 74 
+      20 31 32 38 
+      20 62 79 74 
+      65 73 20 6F 
+      66 20 49 6E 
+      74 20 52 41 
+      4D 0A 0D             .db           "R = List 128 bytes of Int RAM",LF,CR 
+06CB: 43 20 3D 20 
+      43 68 65 63 
+      6B 20 45 58 
+      54 20 52 41 
+      4D 0A 0D             .db           "C = Check EXT RAM",LF,CR ;keep
+06DE: 46 20 3D 20 
+      46 69 6C 6C 
+      20 45 58 54 
+      20 52 41 4D 
+      0A 0D                .db           "F = Fill EXT RAM",LF,CR  ;keep
+06F0: 4A 20 3D 20 
+      4A 75 6D 70 
+      20 74 6F 20 
+      72 75 6E 20 
+      50 72 6F 67 
+      73 0A 0D             .db           "J = Jump to run Progs",LF,CR
+0707: 4C 20 3D 20 
+      4C 6F 61 64 
+      20 48 45 58 
+      20 46 69 6C 
+      65 20 66 6F 
+      72 20 50 72 
+      6F 67 73 0A 
+      0D                   .db           "L = Load HEX File for Progs",LF,CR
+0724: 48 20 3D 20 
+      54 68 69 73 
+      20 4D 65 6E 
+      75 0A 0D             .db           "H = This Menu",LF,CR
+0733: 00                   .db     NULL
+0734: 02 00 57             LJMP   GETSEL
+                   ;
+                   ;
+                   ;$INCLUDE(READHEX.ASM) $07E1
+                   ; This Subroutine Reads a Hex Byte and Puts it in A
+                   ;
+                   READHEX:
+0737: 12 07 6D             LCALL  RD_CHAR         ; Read a character from termi
+073A: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+073D: C4                   SWAP   A               ; Swap nibbles
+073E: FA                   MOV    R2,A            ; Store upper nibble
+073F: 12 07 6D             LCALL  RD_CHAR         ; Read next character
+0742: 12 07 82             LCALL  ASC2HEX         ; Convert ASCII to hex
+0745: 4A                   ORL    A,R2            ; Combine nibbles
+0746: 22                   RET                    ; Return from subroutine
+                   
+                   ;$INCLUDE(WRBYTE.ASM) $07ED
+                   ; This Subroutine Writes a BYTE 
+                   ;
+0747: FA           WRBYTE: MOV    R2,A            ; Store value in R2
+0748: C4                   SWAP   A               ; Swap nibbles
+0749: 12 07 96             LCALL  HEX2ASC         ; Convert hex to ASCII
+074C: 12 07 7A             LCALL  WT_CHAR         ; Write character
+074F: EA                   MOV    A,R2            ; Restore value from R2
+0750: 12 07 96             LCALL  HEX2ASC         ; Convert hex to ASCII
+0753: 12 07 7A             LCALL  WT_CHAR         ; Write character
+0756: 22                   RET                    ; Return from subroutine
+                   ;
+                   ; $INCLUDE(WT_STRIN.ASM) $077C
+                   ; This Subroutine Writes Out A String Through RS232
+                   ;
+0757: D0 83        WT_STRING: POP    DPH          ; Load DPTR with First Charac
+0759: D0 82                   POP    DPL
+075B: E4                      CLR    A            ; Zero Offset
+075C: 93                      MOVC   A,@A+DPTR    ; Get First Character in Stri
+075D: 30 99 FD     MEN_1:     JNB    TI,MEN_1     ; Wait until transmitter read
+0760: C2 99                   CLR    TI           ; Set Not Ready
+0762: F5 99                   MOV    SBUF,A       ; Output Character
+0764: A3                      INC    DPTR         ; Increment Data Pointer
+0765: E4                      CLR    A            ; Zero Offset
+0766: 93                      MOVC   A,@A+DPTR    ; Get Next Character
+0767: B4 00 F3                CJNE   A,#NULL,MEN_1 ; Loop until read null chara
+076A: 74 01                   MOV    A,#1
+076C: 73                      JMP    @A+DPTR      ; Return After read null char
+                   
+                   ; $INCLUDE(RD_CHAR.ASM) $0792
+                   ; This Subroutine Reads a Character and Echos it back.
+                   ;
+076D: 30 98 FD     RD_CHAR:  JNB    RI,RD_CHAR    ; Wait until character receiv
+0770: C2 98                  CLR    RI            ; Clear receive interrupt fla
+0772: E5 99                  MOV    A,SBUF        ; Move received character to 
+0774: 54 7F                  ANL    A,#07FH       ; Mask parity bit
+0776: 12 07 7A               LCALL  WT_CHAR       ; Echo character back
+0779: 22                     RET                  ; Return from subroutine
+                   ;
+                   ; $INCLUDE(WT_CHAR.ASM) $079E
+                   ; This Subroutine Writes out a Character
+                   ;
+077A: 30 99 FD     WT_CHAR:  JNB    TI,WT_CHAR    ; Wait until transmitter read
+077D: C2 99                  CLR    TI            ; Clear transmit interrupt fl
+077F: F5 99                  MOV    SBUF,A        ; Move character to serial bu
+0781: 22                     RET                  ; Return from subroutine
+                   ;
+                   ; $INCLUDE(ASC2HEX.ASM) $07A6
+                   ; This Subroutine converts Hex to ASCII
+                   ;
+0782: C2 D7        ASC2HEX: CLR    CY             ; Clear carry flag
+0784: 94 30                 SUBB   A,#'0'         ; Subtract ASCII '0'
+0786: F5 F0                 MOV    B,A            ; Store result in B
+0788: 94 0A                 SUBB   A,#10          ; Subtract 10
+078A: 20 D7 06              JB     CY,A2LT10      ; If result is less than 10, 
+078D: E5 F0                 MOV    A,B            ; Restore result from B
+078F: 94 07                 SUBB   A,#7           ; Subtract 7
+0791: F5 F0                 MOV    B,A            ; Store result in B
+0793: E5 F0        A2LT10:  MOV    A,B            ; Restore result from B
+0795: 22                    RET                   ; Return from subroutine
+                   
+                   ;$INCLUDE(HEX2ASC.ASM) $07BA
+                   ; This Subroutine Converts Hex to ASCII
+                   ;
+0796: 54 0F        HEX2ASC:  ANL    A,#00FH       ; Mask upper nibble
+0798: C2 D7                  CLR    CY            ; Clear carry flag
+079A: F5 F0                  MOV    B,A           ; Store result in B
+079C: 94 0A                  SUBB   A,#10         ; Subtract 10
+079E: E5 F0                  MOV    A,B           ; Restore result from B
+07A0: 20 D7 02               JB     CY,H2LT10     ; If result is less than 10, 
+07A3: 24 07                  ADD    A,#7          ; Add 7
+07A5: 24 30        H2LT10:   ADD    A,#'0'        ; Add ASCII '0'
+07A7: 22                     RET                  ; Return from subroutine
+                   
+                   ;$INCLUDE(LFCR.ASM) $07CC
+                   ; This Subroutine Does a Line-Feed Cariage Return
+                   ;
+07A8: 74 0A        LFCR:   MOV    A,#00AH         ; Load line feed character
+07AA: 12 07 7A             LCALL  WT_CHAR         ; Write character
+07AD: 74 0D                MOV    A,#00DH         ; Load carriage return charac
+07AF: 12 07 7A             LCALL  WT_CHAR         ; Write character
+07B2: 22                   RET                    ; Return from subroutine
+                   ;
+                   ;$INCLUDE(WAIT.ASM) $07D5
+                   ; This Subroutine Causes a Pause for a Fraction of a Second
+                   ;
+07B3: 74 0A        WAIT:   MOV    A,#10           ; Load delay count
+07B5: 75 F0 FF     WAIT1:  MOV    B,#0FFH         ; Load inner loop count
+07B8: D5 F0 FD     WAIT2:  DJNZ   B,WAIT2         ; Decrement inner loop count
+07BB: 14                   DEC    A               ; Decrement delay count
+07BC: 70 F7                JNZ    WAIT1           ; Repeat until delay count is
+07BE: 22                   RET                    ; Return from subroutine
+                   ;
+                   RAM_CHK:
+07BF: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+07C2: 2D 43 68 65 
+      63 6B 69 6E 
+      67 20 52 41 
+      4D 2E 2E 2E 
+      0A 0D                .db     "-Checking RAM...",LF,CR
+07D4: 00                   .db     NULL
+                   
+                           ; Warning of memory erase
+07D5: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+07D8: 57 61 72 6E 
+      69 6E 67 3A 
+      20 54 68 69 
+      73 20 77 69 
+      6C 6C 20 65 
+      72 61 73 65 
+      20 6D 65 6D 
+      6F 72 79 2E 
+      0A 0D                .db     "Warning: This will erase memory.",LF,CR
+07FA: 50 72 65 73 
+      73 20 3C 43 
+      52 3E 20 74 
+      6F 20 63 6F 
+      6E 74 69 6E 
+      75 65 20 6F 
+      72 20 3C 51 
+      3E 20 74 6F 
+      20 65 78 69 
+      74 2E                .db     "Press <CR> to continue or <Q> to exit."
+0820: 00                   .db     NULL
+                   
+                           ; Read user input
+0821: 12 07 6D             LCALL  RD_CHAR
+0824: B4 0D 02             CJNE   A, #CR, CHECK_EXIT ; If not CR, check for exi
+0827: 80 0C                SJMP   CONTINUE_RAM_CHK   ; If CR, continue RAM chec
+                   
+                   CHECK_EXIT:
+0829: B4 51 03             CJNE   A, #EXIT, CHECK_EXIT_LC ; If not uppercase Q,
+082C: 02 00 57             LJMP   GETSEL                ; If uppercase Q, exit 
+                   
+                   CHECK_EXIT_LC:
+082F: B4 71 03             CJNE   A, #exitlc, CONTINUE_RAM_CHK ; If not lowerca
+0832: 02 00 57             LJMP   GETSEL                ; If lowercase q, exit 
+                   
+                   CONTINUE_RAM_CHK:
+0835: 90 20 00             MOV    DPTR, #2000H     ; Start at address $2000
+                   
+                   RAM_LOOP:
+0838: 74 01                MOV    A, #01H          ; Load 01 into accumulator
+083A: F0                   MOVX   @DPTR, A         ; Write 01 to external RAM a
+083B: 00                   NOP                     ; Small delay
+083C: E0                   MOVX   A, @DPTR         ; Read back from external RA
+083D: B4 01 03             CJNE   A, #01H, RAM_END ; If not equal to 01, RAM en
+0840: A3                   INC    DPTR             ; Increment DPTR
+0841: 80 F5                SJMP   RAM_LOOP         ; Continue checking
+                   
+                   RAM_END:
+                           ; RAM end address is in DPTR
+0843: E5 82                MOV    A, DPL           ; Move low byte of DPTR to a
+0845: 14                   DEC    A                ; Decrement accumulator by 1
+0846: F5 82                MOV    DPL, A           ; Move accumulator back to D
+0848: B4 FF 08             CJNE   A, #0FFH, SKIP_DEC ; If DPL is not 0xFF, skip
+084B: E5 83                MOV    A, DPH           ; Move high byte of DPTR to 
+084D: 14                   DEC    A                ; Decrement accumulator by 1
+084E: F5 83                MOV    DPH, A           ; Move accumulator back to D
+0850: 75 82 FF             MOV    DPL, #0FFH       ; Set DPL to 0xFF
+                   SKIP_DEC:
+                   
+                           ; Save DPTR values
+0853: C0 82                PUSH   DPL
+0855: C0 83                PUSH   DPH
+                   
+                           ; Print RAM start address
+0857: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+085A: 0A 0A 0D 52 
+      41 4D 20 53 
+      74 61 72 74 
+      20 24 32 30 
+      30 30 0A 0D 
+                           .db     LF,LF,CR,"RAM Start $2000",LF,CR
+086E: 52 41 4D 20 
+      45 6E 64 20 
+      20 20 24             .db     "RAM End   $"
+0879: 00                   .db     NULL
+                   
+                           ; Restore DPTR values
+087A: D0 83                POP    DPH
+087C: D0 82                POP    DPL
+                   
+                           ; Print RAM end address
+087E: E5 83                MOV    A, DPH           ; Move high byte of RAM end 
+0880: 12 07 47             LCALL  WRBYTE           ; Print high byte of RAM end
+0883: E5 82                MOV    A, DPL           ; Move low byte of RAM end a
+0885: 12 07 47             LCALL  WRBYTE           ; Print low byte of RAM end 
+                   
+0888: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+088B: 0A 0A 0D             .db     LF,LF,CR
+088E: 00                   .db     NULL
+088F: 02 00 57             LJMP   GETSEL           ; Return from subroutine
+                   
+                   CLR_RAM:
+                           ; Input start address
+0892: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+0895: 2D 46 69 6C 
+      6C 20 52 41 
+      4D 0A 0D             .db     "-Fill RAM",LF,CR
+08A0: 45 6E 74 65 
+      72 20 53 74 
+      61 72 74 20 
+      41 64 64 72 
+      65 73 73 20 
+      69 6E 20 48 
+      65 78 20 28 
+      78 78 78 78 
+      29 3A 20             .db     "Enter Start Address in Hex (xxxx): "
+08C3: 00                   .db     NULL
+08C4: 12 07 37             LCALL  READHEX          ; Read high byte of start ad
+08C7: FD                   MOV    R5, A            ; Store high byte in R5
+08C8: 12 07 37             LCALL  READHEX          ; Read low byte of start add
+08CB: FE                   MOV    R6, A            ; Store low byte in R6
+                   
+                           ; Input end address
+08CC: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+08CF: 0A 0D 45 6E 
+      74 65 72 20 
+      45 6E 64 20 
+      41 64 64 72 
+      65 73 73 20 
+      69 6E 20 48 
+      65 78 20 28 
+      78 78 78 78 
+      29 20 20 3A 
+      20                   .db     LF,CR,"Enter End Address in Hex (xxxx)  : "
+08F4: 00                   .db     NULL
+08F5: 12 07 37             LCALL  READHEX          ; Read high byte of end addr
+08F8: FB                   MOV    R3, A            ; Store high byte in R3
+08F9: 12 07 37             LCALL  READHEX          ; Read low byte of end addre
+08FC: FC                   MOV    R4, A            ; Store low byte in R4
+                   
+                           ; Input fill value
+08FD: 12 07 57             LCALL  WT_STRING        ; Call subroutine to write a
+0900: 0A 0D 45 6E 
+      74 65 72 20 
+      56 61 6C 75 
+      65 20 69 6E 
+      20 48 65 78 
+      20 28 78 78 
+      29 20 20 20 
+      20 20 20 20 
+      20 20 20 3A 
+      20                   .db     LF,CR,"Enter Value in Hex (xx)          : "
+0925: 00                   .db     NULL
+0926: 12 07 37             LCALL  READHEX          ; Read the fill value from u
+0929: FF                   MOV    R7, A            ; Store the fill value in R7
+092A: 12 07 A8             LCALL  LFCR             ; Send line feed and carriag
+                   
+                           ; Set DPTR to start address
+092D: 8D 83                MOV    DPH, R5          ; Restore high byte to DPH
+092F: 8E 82                MOV    DPL, R6          ; Restore low byte to DPL
+                   
+                   CLR_LOOP:
+0931: EF                   MOV    A, R7            ; Load the fill value into a
+0932: F0                   MOVX   @DPTR, A         ; Write the fill value to ex
+0933: E5 82                MOV    A, DPL           ; Move low byte of DPTR to a
+0935: 8C F0                MOV    B, R4            ; Move end low byte to B
+0937: B5 F0 09             CJNE   A, B, CONT_CLR   ; If not reached end address
+093A: E5 83                MOV    A, DPH           ; Move high byte of DPTR to 
+093C: 8B F0                MOV    B, R3            ; Move end high byte to B
+093E: B5 F0 02             CJNE   A, B, CONT_CLR   ; If not reached end address
+0941: 80 03                SJMP   CLR_DONE         ; If reached end address, ex
+                   CONT_CLR:
+0943: A3                   INC    DPTR             ; Increment DPTR
+0944: 80 EB                SJMP   CLR_LOOP         ; Continue clearing
+                   CLR_DONE:
+0946: 02 00 57             LJMP   GETSEL           ; Return from subroutine
+                   
+                   RAM_CHK_NO_OUTPUT:
+0949: 90 20 00             MOV    DPTR, #2000H     ; Start at address $2000
+                   RAM_LOOP_NO_OUTPUT:
+094C: 74 01                MOV    A, #01H          ; Load 01 into accumulator
+094E: F0                   MOVX   @DPTR, A         ; Write 01 to external RAM a
+094F: 00                   NOP                     ; Small delay
+0950: E0                   MOVX   A, @DPTR         ; Read back from external RA
+0951: B4 01 03             CJNE   A, #01H, RAM_END_NO_OUTPUT ; If not equal to 
+0954: A3                   INC    DPTR             ; Increment DPTR
+0955: 80 F5                SJMP   RAM_LOOP_NO_OUTPUT ; Continue checking
+                   RAM_END_NO_OUTPUT:
+                           ; RAM end address is in DPTR
+0957: E5 82                MOV    A, DPL           ; Move low byte of DPTR to a
+0959: 14                   DEC    A                ; Decrement accumulator by 1
+095A: F5 82                MOV    DPL, A           ; Move accumulator back to D
+095C: B4 FF 08             CJNE   A, #0FFH, SKIP_DEC_NO_OUTPUT ; If DPL is not 
+095F: E5 83                MOV    A, DPH           ; Move high byte of DPTR to 
+0961: 14                   DEC    A                ; Decrement accumulator by 1
+0962: F5 83                MOV    DPH, A           ; Move accumulator back to D
+0964: 75 82 FF             MOV    DPL, #0FFH       ; Set DPL to 0xFF
+                   SKIP_DEC_NO_OUTPUT:
+0967: 22                   RET                     ; Return from subroutine
+                   ;
+                   ;        END
