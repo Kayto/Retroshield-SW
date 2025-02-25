@@ -16,7 +16,7 @@ Special thanks to [8bitforce](https://8bitforce.com) for the amazing hardware an
 
 ### t2650.ino
 
-Grab the latest t2650 repo from [8bitforce](https://8bitforce.com).
+Grab the latest t2650 repo from [8bitforce](https://gitlab.com/8bitforce).
 
 The t2650 `.ino` file provides firmware for the RetroShield 2650, designed to run on the Teensy. The firmware includes support for various peripherals and memory configurations.
 

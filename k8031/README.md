@@ -17,7 +17,7 @@ Special thanks to [8bitforce](https://8bitforce.com) for the amazing hardware an
 
 ### k8031.ino
 
-Grab the latest k8031 repo from [8bitforce](https://8bitforce.com).
+Grab the latest k8031 repo from [8bitforce](https://gitlab.com/8bitforce).
 
 The k8031 `.ino` file provides firmware for the RetroShield 8031, designed to run on the Arduino Mega. The firmware includes support for various peripherals and memory configurations.
 

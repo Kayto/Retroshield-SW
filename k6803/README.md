@@ -38,7 +38,7 @@ Special thanks to [8bitforce](https://8bitforce.com) for the amazing hardware an
 
 ### k6803.ino
 
-Grab the latest k6803 repo from [8bitforce](https://8bitforce.com).
+Grab the latest k6803 repo from [8bitforce](https://gitlab.com/8bitforce).
 
 The k6803 `.ino` file provides firmware for the RetroShield 6803, designed to run on the Arduino Mega. The firmware includes support for various peripherals and memory configurations.
 
