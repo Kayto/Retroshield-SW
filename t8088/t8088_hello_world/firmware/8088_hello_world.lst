@@ -1,0 +1,63 @@
+     1                                  ; Standalone 80C88 Hello World program using SCP 8086 Monitor routines
+     2                                  ; Matches SCP Monitor v1.5 structure and UART handling exactly
+     3                                  ; Current date: February 25, 2025
+     4                                  
+     5                                  CPU     8086            ; Target 80C88 (8086-compatible)
+     6                                  
+     7                                  ; Constants from SCP Monitor
+     8                                  BASE    EQU     0F0H            ; CPU Support base port address
+     9                                  STAT    EQU     BASE+7          ; UART status port (0F7H)
+    10                                  DATA    EQU     BASE+6          ; UART data port (0F6H)
+    11                                  TDRE    EQU     02h             ; UART transmitter ready bit
+    12                                  
+    13                                          SECTION .text           ; All in text section (ROM-like)
+    14                                  
+    15                                  ; Reset vector entry point (matches SCP Monitor)
+    16                                  RESET:
+    17 00000000 FC                              CLD                     ; Clear direction flag (forward string ops)
+    18 00000001 31C0                            XOR     AX, AX          ; Zero AX
+    19 00000003 8ED0                            MOV     SS, AX          ; Set SS to 0
+    20 00000005 BC0010                          MOV     SP, 1000h       ; Stack at 0000:1000h (safe location)
+    21 00000008 8ED8                            MOV     DS, AX          ; Set DS to 0
+    22 0000000A 8EC0                            MOV     ES, AX          ; Set ES to 0
+    23                                  
+    24 0000000C BE[2900]                        MOV     SI, HELLOMSG    ; Point SI to Hello World string in CS
+    25 0000000F E80200                          CALL    PRINTMES        ; Print the string (exact SCP routine)
+    26 00000012 EBFE                            JMP     $               ; Infinite loop (halt equivalent)
+    27                                  
+    28                                  ; Print ASCII message (exact copy of SCP’s PRINTMES)
+    29                                  PRINTMES:
+    30 00000014 2E                              CS                      ; Fetch from code segment
+    31 00000015 AC                              LODSB                   ; Load next char from [CS:SI] into AL, increment SI
+    32 00000016 E80500                          CALL    OUT             ; Output the character
+    33 00000019 D0E0                            SHL     AL, 1           ; Shift left to check high bit
+    34 0000001B 73F7                            JNC     PRINTMES        ; If no carry, high bit not set, continue
+    35 0000001D C3                              RET                     ; High bit set, end of string
+    36                                  
+    37                                  ; Output character to UART (exact copy of SCP’s OUT)
+    38                                  OUT:
+    39 0000001E 50                              PUSH    AX              ; Save character in AL
+    40                                  OUT1:
+    41 0000001F E4F7                            IN      AL, STAT        ; Read UART status
+    42 00000021 2402                            AND     AL, TDRE        ; Check transmitter ready bit
+    43 00000023 74FA                            JZ      OUT1            ; Wait until ready
+    44 00000025 58                              POP     AX              ; Restore character
+    45 00000026 E6F6                            OUT     DATA, AL        ; Send to UART
+    46 00000028 C3                              RET                     ; Return
+    47                                  
+    48                                  ; String placed in code segment (like SCP’s HEADER)
+    49                                  HELLOMSG: 
+    50 00000029 48656C6C6F20576F72-             DB      "Hello World", 13, 10+80H  ; String with CR/LF, high bit on last char
+    50 00000032 6C640D8A           
+    51                                  
+    52                                  ; Pad to reset vector location (matches SCP Monitor)
+    53 00000036 90<rep FFBAh>                   TIMES   0FFF0H - ($ - $$) DB 90H  ; Fill with NOPs to 0FFF0H
+    54 0000FFF0 EA                              DB      0EAH            ; Far JMP opcode
+    55 0000FFF1 [0000]00F0                      DW      RESET, 0F000H   ; Jump to RESET at F000:0000
+    56 0000FFF5 00<rep Bh>                      TIMES   10000H - ($ - $$) DB 00H  ; Fill to 64KB
+    57                                  
+    58                                  
+    59                                  
+    60                                  
+    61                                  
+    62                                  

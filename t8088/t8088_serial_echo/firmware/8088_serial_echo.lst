@@ -1,0 +1,64 @@
+     1                                  ; Standalone 80C88 Serial Echo program using SCP 8086 Monitor routines
+     2                                  ; Reads from UART and echoes back, runs indefinitely
+     3                                  ; Based on SCP Monitor v1.5 structure and UART handling
+     4                                  ; Current date: February 25, 2025
+     5                                  
+     6                                  CPU     8086            ; Target 80C88 (8086-compatible)
+     7                                  
+     8                                  ; Constants from SCP Monitor
+     9                                  BASE    EQU     0F0H            ; CPU Support base port address
+    10                                  STAT    EQU     BASE+7          ; UART status port (0F7H)
+    11                                  DATA    EQU     BASE+6          ; UART data port (0F6H)
+    12                                  TDRE    EQU     02h             ; UART transmitter ready bit
+    13                                  RDRF    EQU     01h             ; UART data available bit
+    14                                  
+    15                                          SECTION .text           ; All in text section (ROM-like)
+    16                                  
+    17                                  ; Reset vector entry point (matches SCP Monitor)
+    18                                  RESET:
+    19 00000000 FC                              CLD                     ; Clear direction flag
+    20 00000001 31C0                            XOR     AX, AX          ; Zero AX
+    21 00000003 8ED0                            MOV     SS, AX          ; Set SS to 0
+    22 00000005 BC0010                          MOV     SP, 1000h       ; Stack at 0000:1000h (safe location)
+    23 00000008 8ED8                            MOV     DS, AX          ; Set DS to 0
+    24 0000000A 8EC0                            MOV     ES, AX          ; Set ES to 0
+    25                                  
+    26                                  echo_loop:
+    27 0000000C E80500                          CALL    IN              ; Read a character from UART
+    28 0000000F E80F00                          CALL    OUT             ; Echo it back
+    29 00000012 EBF8                            JMP     echo_loop       ; Repeat forever
+    30                                  
+    31                                  ; Input character from UART (exact copy of SCP’s IN)
+    32                                  IN:
+    33 00000014 FA                              CLI                     ; Disable interrupts (poll mode)
+    34                                  IN_WAIT:
+    35 00000015 E4F7                            IN      AL, STAT        ; Read UART status
+    36 00000017 A801                            TEST    AL, RDRF        ; Check data available bit
+    37 00000019 74FA                            JZ      IN_WAIT         ; Wait until data ready
+    38 0000001B E4F6                            IN      AL, DATA        ; Read character from UART
+    39 0000001D 247F                            AND     AL, 7FH         ; Strip to 7 bits (ASCII)
+    40 0000001F FB                              STI                     ; Re-enable interrupts
+    41 00000020 C3                              RET                     ; Return with char in AL
+    42                                  
+    43                                  ; Output character to UART (exact copy of SCP’s OUT)
+    44                                  OUT:
+    45 00000021 50                              PUSH    AX              ; Save character in AL
+    46                                  OUT1:
+    47 00000022 E4F7                            IN      AL, STAT        ; Read UART status
+    48 00000024 2402                            AND     AL, TDRE        ; Check transmitter ready bit
+    49 00000026 74FA                            JZ      OUT1            ; Wait until ready
+    50 00000028 58                              POP     AX              ; Restore character
+    51 00000029 E6F6                            OUT     DATA, AL        ; Send to UART
+    52 0000002B C3                              RET                     ; Return
+    53                                  
+    54                                  ; Pad to reset vector location (matches SCP Monitor)
+    55 0000002C 90<rep FFC4h>                   TIMES   0FFF0H - ($ - $$) DB 90H  ; Fill with NOPs to 0FFF0H
+    56 0000FFF0 EA                              DB      0EAH            ; Far JMP opcode
+    57 0000FFF1 [0000]00F0                      DW      RESET, 0F000H   ; Jump to RESET at F000:0000
+    58 0000FFF5 00<rep Bh>                      TIMES   10000H - ($ - $$) DB 00H  ; Fill to 64KB
+    59                                  
+    60                                  
+    61                                  
+    62                                  
+    63                                  
+    64                                  

@@ -42,4 +42,6 @@
 - `t8085_tinybasic/`: Contains Tiny BASIC firmware.
 
 ### t8088
-
+- `t8088_min_scp_v15`: Seattle Computer Products 8086 Monitor version 1.5  3-19-82 by Tim Paterson. Listing, hex and bin code.
+- `t8088_hello_world`: Simple hello world to isolate serial routines.
+- `t8088_serial_echo`: Simple serial echo to isolate serial i/o routines.
