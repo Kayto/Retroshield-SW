@@ -32,7 +32,7 @@
 - `k8031_serial_echo/`: Contains serial echo example.
 
 ### t2650
-- `t2650_heybug/`: Contains HeyBug firmware - my .
+- `t2650_heybug/`: Contains HeyBug firmware - my go at a new monitor combining useful routines.
 - `t2650_pipbug_mwbasic_ram/`: Contains PipBug and MicroWorld BASIC firmware.
 - `t2650_serial/`: Contains serial communication examples.
 
