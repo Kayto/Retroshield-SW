@@ -27,7 +27,7 @@
 ### k8031
 - `ESD8031.pdf`: Reference Documentation for the 8031 system.
 - `k8031_8031_AT_Monitor/`: Contains AT monitor firmware.
-- `k8031_8031_Monitor_Frank_Rudley/`: Contains monitor firmware by Frank Rudley.
+- `k8031_8031_Monitor_Frank_Rudley/`: Contains monitor firmware by Frank Rudley. ASM, Listing, hex and bin code.
 - `k8031_hello_world/`: Contains hello world example.
 - `k8031_serial_echo/`: Contains serial echo example.
 
@@ -42,6 +42,6 @@
 - `t8085_tinybasic/`: Contains Tiny BASIC firmware.
 
 ### t8088
-- `t8088_min_scp_v15`: Seattle Computer Products 8086 Monitor version 1.5  3-19-82 by Tim Paterson. Listing, hex and bin code.
+- `t8088_min_scp_v15`: Seattle Computer Products 8086 Monitor version 1.5  3-19-82 by Tim Paterson. ASM, Listing, hex and bin code.
 - `t8088_hello_world`: Simple hello world to isolate serial routines.
 - `t8088_serial_echo`: Simple serial echo to isolate serial i/o routines.
