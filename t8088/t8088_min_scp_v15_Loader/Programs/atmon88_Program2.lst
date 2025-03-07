@@ -1,0 +1,37 @@
+     1                                  ; Test Program for S Command (Single-Step Test)
+     2                                  ; Target: 8086 (assembled for 16-bit mode)
+     3                                  ; Load Address: 0500h
+     4                                  ; 
+     5                                  ; This program initializes registers with known values and then enters a loop
+     6                                  ; that increments DI, BX, CX, and DX until DI reaches 0005h. You can use the S 
+     7                                  ; command to single-step through the instructions and watch the registers change.
+     8                                  ; After the loop finishes, the program executes a RETF to return control to the monitor.
+     9                                  
+    10                                  org     0500h
+    11                                  
+    12                                  start:
+    13                                          ; Initialize registers to known values
+    14 00000000 B80100                          mov     ax, 0001h       ; AX = 0001h
+    15 00000003 BB0200                          mov     bx, 0002h       ; BX = 0002h
+    16 00000006 B90300                          mov     cx, 0003h       ; CX = 0003h
+    17 00000009 BA0400                          mov     dx, 0004h       ; DX = 0004h
+    18                                  
+    19                                  single_step_loop:
+    20                                          ; Increment registers to test single stepping
+    21 0000000C 40                              inc     ax            ; DI = DI + 1
+    22 0000000D 43                              inc     bx            ; BX = BX + 1
+    23 0000000E 41                              inc     cx            ; CX = CX + 1
+    24 0000000F 42                              inc     dx            ; DX = DX + 1
+    25                                  
+    26                                          ; (Optional: output a marker character so you know the loop executed)
+    27                                          ; mov     dx, 0F600h    ; Use the monitor’s serial port address
+    28                                          ; mov     al, '*'       ; Marker character
+    29                                          ; out     dx, al
+    30                                  
+    31 00000010 83F805                          cmp     ax, 0005h     ; Compare AX to 0005h
+    32 00000013 75F7                            jne     single_step_loop
+    33                                  
+    34                                          ; When AX reaches 0005h, exit by returning to the monitor
+    35 00000015 CB                              retf                  ; Far return
+    36                                  
+    37                                  ; End of Test Program

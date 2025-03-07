@@ -1,0 +1,32 @@
+     1                                  ; -----------------------------------------------------------------
+     2                                  ; Test Program for S Command (Single-Step Test) - Stack Operations
+     3                                  ; Target: 8086 (assembled for 16-bit mode)
+     4                                  ; Load Address: 0500h
+     5                                  ;
+     6                                  ; This program tests stack behavior by pushing and popping values.
+     7                                  ; The stack pointer (SP) is inspected before and after operations.
+     8                                  ; You can use the S command to single-step and monitor stack changes.
+     9                                  ; After testing, the program halts for debugging.
+    10                                  ; -----------------------------------------------------------------
+    11                                  BITS 16                ; Set 16-bit mode (for 8086)
+    12                                  org 0500h              ; execution starts at 0x500
+    13                                  
+    14                                  start:
+    15 00000000 BB3412                      mov bx, 1234h     ; Load BX with test value
+    16 00000003 50                          push ax           ; Push BX onto stack
+    17                                  
+    18 00000004 BB7856                      mov bx, 5678h     ; Load BX with another test value
+    19 00000007 53                          push bx           ; Push BX onto stack
+    20                                  
+    21 00000008 89E1                        mov cx, sp        ; Store current SP in CX (before popping)
+    22                                      
+    23 0000000A 5B                          pop bx            ; Pop back into AX (should be 5678h)
+    24 0000000B 5A                          pop dx            ; Pop back into DX (should be 1234h)
+    25                                  
+    26 0000000C 89E7                        mov di, sp        ; Store final SP in DI (after popping)
+    27                                      
+    28 0000000E F4                          hlt               ; Halt execution (use debugger to inspect registers)
+    29                                      
+    30 0000000F C3                          ret               ; Return to Monitor
+    31                                  
+    32                                  

@@ -1,0 +1,35 @@
+     1                                  ; Test Program: "TEST OK" with CRLF then RETF
+     2                                  ; Target: 8086 (assembled for 16-bit mode)
+     3                                  ; Load address: 0500h
+     4                                  
+     5                                  org 0x0500  ; Set the origin to 0500h
+     6                                  
+     7                                  start:
+     8 00000000 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+     9 00000003 B054                        mov al, 'T'     ; Load 'T' into AL
+    10 00000005 EE                          out dx, al      ; Output 'T' to UART
+    11 00000006 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    12 00000009 B045                        mov al, 'E'     ; Load 'E' into AL
+    13 0000000B EE                          out dx, al      ; Output 'E' to UART
+    14 0000000C BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    15 0000000F B053                        mov al, 'S'     ; Load 'S' into AL
+    16 00000011 EE                          out dx, al      ; Output 'S' to UART
+    17 00000012 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    18 00000015 B054                        mov al, 'T'     ; Load 'T' into AL
+    19 00000017 EE                          out dx, al      ; Output 'T' to UART
+    20 00000018 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    21 0000001B B020                        mov al, ' '     ; Load space character into AL
+    22 0000001D EE                          out dx, al      ; Output space to UART
+    23 0000001E BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    24 00000021 B04F                        mov al, 'O'     ; Load 'O' into AL
+    25 00000023 EE                          out dx, al      ; Output 'O' to UART
+    26 00000024 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    27 00000027 B04B                        mov al, 'K'     ; Load 'K' into AL
+    28 00000029 EE                          out dx, al      ; Output 'K' to UART
+    29 0000002A BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    30 0000002D B00D                        mov al, 0x0D    ; Load Carriage Return into AL
+    31 0000002F EE                          out dx, al      ; Output Carriage Return to UART
+    32 00000030 BAF600                      mov dx, 0x00F6  ; Set DX to UART data port address
+    33 00000033 B00A                        mov al, 0x0A    ; Load Line Feed into AL
+    34 00000035 EE                          out dx, al      ; Output Line Feed to UART
+    35 00000036 CB                          retf            ; Far return to caller

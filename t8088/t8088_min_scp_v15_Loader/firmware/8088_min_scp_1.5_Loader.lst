@@ -1,0 +1,1234 @@
+     1                                  ; Seattle Computer Products 8086 Monitor version 1.5 with Intel HEX Loader
+     2                                  ; Original by Tim Paterson, Intel HEX loader added by kayto@github.com
+     3                                  ; Hardware: UART only at BASE=0F0H
+     4                                  ; Memory: RAM at 0000:0100H, Code at F000:0000H, RESET at 0FFF0H
+     5                                  ; Date: March 07, 2025
+     6                                  
+     7                                  CPU     8086
+     8                                  
+     9                                  BASE:   EQU     0F0H            ; CPU Support base port address
+    10                                  STAT:   EQU     BASE+7          ; UART status port (0F7H)
+    11                                  DATA:   EQU     BASE+6          ; UART data port (0F6H)
+    12                                  RDRF:   EQU     01h             ; UART data available bit
+    13                                  TDRE:   EQU     02h             ; UART transmitter ready bit
+    14                                  
+    15                                  BUFLEN: EQU     80              ; Maximum length of line input buffer
+    16                                  BPMAX:  EQU     10              ; Maximum number of breakpoints
+    17                                  BPLEN:  EQU     BPMAX+BPMAX     ; Length of breakpoint table
+    18                                  REGTABLEN:EQU   14              ; Number of registers
+    19                                  PROMPT: EQU     ">"
+    20                                  CAN:    EQU     "@"
+    21                                  ESC:    EQU     1BH             ; Escape key for Intel HEX exit
+    22                                  
+    23                                  SECTION .bss
+    24                                  
+    25 00000000 <res 100h>              RESB    100H                    ; Reserve 256 bytes before RAM area
+    26                                  
+    27                                  ; RAM area starts at 0000:0100H
+    28 00000100 ????                    BRKCNT: RESW    1               ; Number of breakpoints (0100H)
+    29 00000102 ????                    TCOUNT: RESW    1               ; Number of steps to trace (0102H)
+    30 00000104 <res 14h>               BPTAB:  RESW    BPMAX           ; Breakpoint table (0104H)
+    31 00000118 <res 51h>               LINEBUF:RESB    BUFLEN+1        ; Line input buffer (0118H)
+    32 00000169 ??                      ALIGNB  2
+    33 0000016A <res 64h>               RESW    50                      ; Working stack area (016AH)
+    34                                  STACK:
+    35                                  
+    36                                  ; Register save area starts at 01CEH
+    37 000001CE ????                    AXSAVE: RESW    1               ; 01CEH
+    38 000001D0 ????                    BXSAVE: RESW    1
+    39 000001D2 ????                    CXSAVE: RESW    1
+    40 000001D4 ????                    DXSAVE: RESW    1
+    41 000001D6 ????                    SPSAVE: RESW    1
+    42 000001D8 ????                    BPSAVE: RESW    1
+    43 000001DA ????                    SISAVE: RESW    1
+    44 000001DC ????                    DISAVE: RESW    1
+    45 000001DE ????                    DSSAVE: RESW    1
+    46 000001E0 ????                    ESSAVE: RESW    1
+    47                                  RSTACK:                         ; Stack set here
+    48 000001E2 ????                    SSSAVE: RESW    1
+    49 000001E4 ????                    CSSAVE: RESW    1
+    50 000001E6 ????                    IPSAVE: RESW    1
+    51 000001E8 ????                    FSAVE:  RESW    1               ; 01E8H
+    52                                  
+    53                                  ; New variables for Intel HEX loader (starting at 01EAH)
+    54 000001EA ??                      BCS:    RESB    1               ; Byte checksum (01EAH)
+    55 000001EB ??                      BCSERR: RESB    1               ; Checksum error flag (01EBH)
+    56 000001EC ??                      EXITFL: RESB    1               ; Exit flag for Intel HEX (01ECH)
+    57                                  
+    58                                  SECTION .text
+    59                                  ORG     0                       ; Code starts at F000:0000H
+    60                                  
+    61                                  RESET:
+    62 00000000 FC                          CLD
+    63 00000001 31C0                        XOR     AX,AX
+    64 00000003 8ED0                        MOV     SS,AX
+    65 00000005 8ED8                        MOV     DS,AX
+    66 00000007 8EC0                        MOV     ES,AX
+    67 00000009 BF[CE01]                    MOV     DI,AXSAVE
+    68 0000000C B90E00                      MOV     CX,14
+    69 0000000F F3                          REP
+    70 00000010 AB                          STOSW                   ; Set register images to zero
+    71 00000011 800E[E901]02                OR      BYTE [FSAVE+1],2 ; Enable interrupts
+    72 00000016 B104                        MOV     CL,4
+    73 00000018 B040                        MOV     AL,40H
+    74 0000001A BF[DE01]                    MOV     DI,DSSAVE
+    75 0000001D F3                          REP
+    76 0000001E AB                          STOSW                   ; Set segment reg. images to 40H
+    77 0000001F C606[D701]0C                MOV     BYTE [SPSAVE+1],0CH ; Set user stack to 400H+0C00H
+    78 00000024 BC[CE01]                    MOV     SP,STACK
+    79                                  
+    80                                  DOMON:
+    81 00000027 BE[2108]                    MOV     SI,HEADER
+    82 0000002A E88B00                      CALL    PRINTMES
+    83                                  
+    84                                  COMMAND:
+    85 0000002D FC                          CLD
+    86 0000002E 31C0                        XOR     AX,AX
+    87 00000030 8ED8                        MOV     DS,AX
+    88 00000032 8EC0                        MOV     ES,AX
+    89 00000034 BC[CE01]                    MOV     SP,STACK
+    90 00000037 C7066400[C706]              MOV     WORD [64H],INT  ; Set UART interrupt vector
+    91 0000003D 8C0E6600                    MOV     WORD [66H],CS
+    92 00000041 B03E                        MOV     AL,PROMPT
+    93 00000043 E87C00                      CALL    OUT
+    94 00000046 E81E00                      CALL    INBUF           ; Get command line
+    95 00000049 E88A00                      CALL    SCANB           ; Scan off leading blanks
+    96 0000004C 74DF                        JZ      COMMAND         ; Null command?
+    97 0000004E 8A05                        MOV     AL,[DI]         ; AL=first non-blank character
+    98 00000050 2C42                        SUB     AL,"B"          ; Low end range check
+    99 00000052 7210                        JC      ERR1
+   100 00000054 3C13                        CMP     AL,"T"+1-"B"    ; Upper end range check
+   101 00000056 730C                        JNC     ERR1
+   102 00000058 47                          INC     DI
+   103 00000059 D0E0                        SHL     AL,1            ; Times two
+   104 0000005B 98                          CBW                     ; Now a 16-bit quantity
+   105 0000005C 93                          XCHG    BX,AX           ; In BX we can address with it
+   106 0000005D 2EFF97[2501]                CALL    [CS:BX+COMTAB]  ; Execute command
+   107 00000062 EBC9                        JMP     COMMAND
+   108                                  ERR1:
+   109 00000064 E94E06                      JMP     ERROR
+   110                                  
+   111                                  INBUF:
+   112 00000067 BF[1801]                    MOV     DI,LINEBUF
+   113 0000006A 31C9                        XOR     CX,CX
+   114                                  GETCH:
+   115 0000006C E83900                      CALL    IN
+   116 0000006F 3C20                        CMP     AL,20H
+   117 00000071 721B                        JC      CONTROL
+   118 00000073 3C7F                        CMP     AL,7FH
+   119 00000075 740E                        JZ      BACKSP
+   120 00000077 E84800                      CALL    OUT
+   121 0000007A 3C40                        CMP     AL,CAN
+   122 0000007C 7425                        JZ      KILL
+   123 0000007E AA                          STOSB
+   124 0000007F 41                          INC     CX
+   125 00000080 83F950                      CMP     CX,BUFLEN
+   126 00000083 76E7                        JBE     GETCH
+   127                                  BACKSP:
+   128 00000085 E3E5                        JCXZ    GETCH
+   129 00000087 4F                          DEC     DI
+   130 00000088 49                          DEC     CX
+   131 00000089 E82900                      CALL    BACKUP
+   132 0000008C EBDE                        JMP     GETCH
+   133                                  CONTROL:
+   134 0000008E 3C08                        CMP     AL,8
+   135 00000090 74F3                        JZ      BACKSP
+   136 00000092 3C0D                        CMP     AL,13
+   137 00000094 75D6                        JNZ     GETCH
+   138 00000096 AA                          STOSB
+   139 00000097 BF[1801]                    MOV     DI,LINEBUF
+   140                                  
+   141                                  CRLF:
+   142 0000009A B00D                        MOV     AL,13
+   143 0000009C E82300                      CALL    OUT
+   144 0000009F B00A                        MOV     AL,10
+   145 000000A1 EB1F                        JMP     OUT
+   146                                  
+   147                                  KILL:
+   148 000000A3 E8F4FF                      CALL    CRLF
+   149 000000A6 EB85                        JMP     COMMAND
+   150                                  
+   151                                  IN:
+   152 000000A8 FA                          CLI
+   153 000000A9 E4F7                        IN      AL,STAT
+   154 000000AB A801                        TEST    AL,RDRF
+   155 000000AD 74F9                        JZ      IN
+   156 000000AF E4F6                        IN      AL,DATA
+   157 000000B1 247F                        AND     AL,7FH
+   158 000000B3 FB                          STI
+   159 000000B4 C3                          RET
+   160                                  
+   161                                  BACKUP:
+   162 000000B5 BE[5908]                    MOV     SI,BACMES
+   163                                  PRINTMES:
+   164 000000B8 2E                          CS
+   165 000000B9 AC                          LODSB
+   166 000000BA E80500                      CALL    OUT
+   167 000000BD D0E0                        SHL     AL,1
+   168 000000BF 73F7                        JNC     PRINTMES
+   169 000000C1 C3                          RET
+   170                                  
+   171                                  OUT:
+   172 000000C2 50                          PUSH    AX
+   173                                  OUT1:
+   174 000000C3 E4F7                        IN      AL,STAT
+   175 000000C5 2402                        AND     AL,TDRE
+   176 000000C7 74FA                        JZ      OUT1
+   177 000000C9 58                          POP     AX
+   178 000000CA E6F6                        OUT     DATA,AL
+   179 000000CC C3                          RET
+   180                                  
+   181                                  SCANP:
+   182 000000CD E80600                      CALL    SCANB
+   183 000000D0 803D2C                      CMP     BYTE [DI],","
+   184 000000D3 750A                        JNE     EOLCHK
+   185 000000D5 47                          INC     DI
+   186                                  SCANB:
+   187 000000D6 B020                        MOV     AL," "
+   188 000000D8 51                          PUSH    CX
+   189 000000D9 B1FF                        MOV     CL,-1
+   190 000000DB F3                          REPE
+   191 000000DC AE                          SCASB
+   192 000000DD 4F                          DEC     DI
+   193 000000DE 59                          POP     CX
+   194                                  EOLCHK:
+   195 000000DF 803D0D                      CMP     BYTE [DI],13
+   196 000000E2 C3                          RET
+   197                                  
+   198                                  OUTSI:
+   199 000000E3 8CDA                        MOV     DX,DS
+   200 000000E5 B400                        MOV     AH,0
+   201 000000E7 E8D804                      CALL    SHIFT4
+   202 000000EA 01F2                        ADD     DX,SI
+   203 000000EC EB09                        JMP     OUTADD
+   204                                  
+   205                                  OUTDI:
+   206 000000EE 8CC2                        MOV     DX,ES
+   207 000000F0 B400                        MOV     AH,0
+   208 000000F2 E8CD04                      CALL    SHIFT4
+   209 000000F5 01FA                        ADD     DX,DI
+   210                                  OUTADD:
+   211 000000F7 80D400                      ADC     AH,0
+   212 000000FA E81200                      CALL    HIDIG
+   213                                  OUT16:
+   214 000000FD 88F0                        MOV     AL,DH
+   215 000000FF E80200                      CALL    HEX
+   216 00000102 88D0                        MOV     AL,DL
+   217                                  HEX:
+   218 00000104 88C4                        MOV     AH,AL
+   219 00000106 51                          PUSH    CX
+   220 00000107 B104                        MOV     CL,4
+   221 00000109 D2E8                        SHR     AL,CL
+   222 0000010B 59                          POP     CX
+   223 0000010C E80200                      CALL    DIGIT
+   224                                  HIDIG:
+   225 0000010F 88E0                        MOV     AL,AH
+   226                                  DIGIT:
+   227 00000111 240F                        AND     AL,0FH
+   228 00000113 0490                        ADD     AL,90H
+   229 00000115 27                          DAA
+   230 00000116 1440                        ADC     AL,40H
+   231 00000118 27                          DAA
+   232 00000119 EBA7                        JMP     OUT
+   233                                  
+   234                                  BLANK:
+   235 0000011B B020                        MOV     AL," "
+   236 0000011D EBA3                        JMP     OUT
+   237                                  
+   238                                  TAB:
+   239 0000011F E8F9FF                      CALL    BLANK
+   240 00000122 E2FB                        LOOP    TAB
+   241 00000124 C3                          RET
+   242                                  
+   243                                  COMTAB:
+   244 00000125 [B406]                      DW      PERR    ; B
+   245 00000127 [B406]                      DW      PERR    ; C
+   246 00000129 [4B01]                      DW      DUMP    ; D
+   247 0000012B [A801]                      DW      ENTER   ; E
+   248 0000012D [5F02]                      DW      FILL    ; F
+   249 0000012F [8602]                      DW      GO      ; G
+   250 00000131 [B406]                      DW      PERR    ; H
+   251 00000133 [1603]                      DW      INPUT   ; I
+   252 00000135 [B406]                      DW      PERR    ; J
+   253 00000137 [B406]                      DW      PERR    ; K
+   254 00000139 [E306]                      DW      LOADHEX ; L - Intel HEX loader
+   255 0000013B [2303]                      DW      MOVE    ; M
+   256 0000013D [B406]                      DW      PERR    ; N
+   257 0000013F [5003]                      DW      OUTPUT  ; O
+   258 00000141 [B406]                      DW      PERR    ; P
+   259 00000143 [B406]                      DW      PERR    ; Q
+   260 00000145 [6103]                      DW      REG     ; R
+   261 00000147 [9C04]                      DW      SEARCH  ; S
+   262 00000149 [CD04]                      DW      TRACE   ; T
+   263                                  
+   264                                  DUMP:
+   265 0000014B E88504                      CALL    RANGE
+   266 0000014E 50                          PUSH    AX
+   267 0000014F E85C05                      CALL    GETEOL
+   268 00000152 1F                          POP     DS
+   269 00000153 89D6                        MOV     SI,DX
+   270                                  ROW:
+   271 00000155 E88BFF                      CALL    OUTSI
+   272 00000158 56                          PUSH    SI
+   273                                  BYTE0:
+   274 00000159 E8BFFF                      CALL    BLANK
+   275                                  BYTE1:
+   276 0000015C AC                          LODSB
+   277 0000015D E8A4FF                      CALL    HEX
+   278 00000160 5A                          POP     DX
+   279 00000161 49                          DEC     CX
+   280 00000162 7417                        JZ      ASCII
+   281 00000164 89F0                        MOV     AX,SI
+   282 00000166 A80F                        TEST    AL,0FH
+   283 00000168 740C                        JZ      ENDROW
+   284 0000016A 52                          PUSH    DX
+   285 0000016B A807                        TEST    AL,7
+   286 0000016D 75EA                        JNZ     BYTE0
+   287 0000016F B02D                        MOV     AL,"-"
+   288 00000171 E84EFF                      CALL    OUT
+   289 00000174 EBE6                        JMP     BYTE1
+   290                                  ENDROW:
+   291 00000176 E80200                      CALL    ASCII
+   292 00000179 EBDA                        JMP     ROW
+   293                                  ASCII:
+   294 0000017B 51                          PUSH    CX
+   295 0000017C 89F0                        MOV     AX,SI
+   296 0000017E 89D6                        MOV     SI,DX
+   297 00000180 29D0                        SUB     AX,DX
+   298 00000182 89C3                        MOV     BX,AX
+   299 00000184 D1E0                        SHL     AX,1
+   300 00000186 01D8                        ADD     AX,BX
+   301 00000188 B93300                      MOV     CX,51
+   302 0000018B 29C1                        SUB     CX,AX
+   303 0000018D E88FFF                      CALL    TAB
+   304 00000190 89D9                        MOV     CX,BX
+   305                                  ASCDMP:
+   306 00000192 AC                          LODSB
+   307 00000193 247F                        AND     AL,7FH
+   308 00000195 3C7F                        CMP     AL,7FH
+   309 00000197 7404                        JZ      NOPRT
+   310 00000199 3C20                        CMP     AL," "
+   311 0000019B 7302                        JNC     PRIN
+   312                                  NOPRT:
+   313 0000019D B02E                        MOV     AL,"."
+   314                                  PRIN:
+   315 0000019F E820FF                      CALL    OUT
+   316 000001A2 E2EE                        LOOP    ASCDMP
+   317 000001A4 59                          POP     CX
+   318 000001A5 E9F2FE                      JMP     CRLF
+   319                                  
+   320                                  ENTER:
+   321 000001A8 B90500                      MOV     CX,5
+   322 000001AB E86F04                      CALL    GETHEX
+   323 000001AE E80304                      CALL    GETSEG
+   324 000001B1 80EC08                      SUB     AH,8
+   325 000001B4 80C680                      ADD     DH,80H
+   326 000001B7 50                          PUSH    AX
+   327 000001B8 52                          PUSH    DX
+   328 000001B9 E81AFF                      CALL    SCANB
+   329 000001BC 7403E99100                  JNZ     GETLIST
+   330 000001C1 5F                          POP     DI
+   331 000001C2 07                          POP     ES
+   332                                  GETROW:
+   333 000001C3 E828FF                      CALL    OUTDI
+   334 000001C6 E852FF                      CALL    BLANK
+   335                                  GETBYTE:
+   336 000001C9 268A05                      MOV     AL,[ES:DI]
+   337 000001CC E835FF                      CALL    HEX
+   338 000001CF B02D                        MOV     AL,"-"
+   339 000001D1 E8EEFE                      CALL    OUT
+   340 000001D4 B90200                      MOV     CX,2
+   341 000001D7 BA0000                      MOV     DX,0
+   342                                  GETDIG:
+   343 000001DA E8CBFE                      CALL    IN
+   344 000001DD 88C4                        MOV     AH,AL
+   345 000001DF E86B04                      CALL    HEXCHK
+   346 000001E2 86C4                        XCHG    AH,AL
+   347 000001E4 720C                        JC      NOHEX
+   348 000001E6 E8D9FE                      CALL    OUT
+   349 000001E9 88D6                        MOV     DH,DL
+   350 000001EB 88E2                        MOV     DL,AH
+   351 000001ED E2EB                        LOOP    GETDIG
+   352                                  WAITIN:
+   353 000001EF E8B6FE                      CALL    IN
+   354                                  NOHEX:
+   355 000001F2 3C08                        CMP     AL,8
+   356 000001F4 7419                        JZ      BS
+   357 000001F6 3C7F                        CMP     AL,7FH
+   358 000001F8 7415                        JZ      BS
+   359 000001FA 3C2D                        CMP     AL,"-"
+   360 000001FC 744D                        JZ      PREV
+   361 000001FE 3C0D                        CMP     AL,13
+   362 00000200 742F                        JZ      EOL
+   363 00000202 3C20                        CMP     AL," "
+   364 00000204 7431                        JZ      NEXT
+   365 00000206 B007                        MOV     AL,7
+   366 00000208 E8B7FE                      CALL    OUT
+   367 0000020B E3E2                        JCXZ    WAITIN
+   368 0000020D EBCB                        JMP     GETDIG
+   369                                  BS:
+   370 0000020F 80F902                      CMP     CL,2
+   371 00000212 74C6                        JZ      GETDIG
+   372 00000214 FEC1                        INC     CL
+   373 00000216 88F2                        MOV     DL,DH
+   374 00000218 88EE                        MOV     DH,CH
+   375 0000021A E898FE                      CALL    BACKUP
+   376 0000021D EBBB                        JMP     GETDIG
+   377                                  STORE:
+   378 0000021F 80F902                      CMP     CL,2
+   379 00000222 740B                        JZ      NOSTO
+   380 00000224 51                          PUSH    CX
+   381 00000225 B104                        MOV     CL,4
+   382 00000227 D2E6                        SHL     DH,CL
+   383 00000229 59                          POP     CX
+   384 0000022A 08F2                        OR      DL,DH
+   385 0000022C 268815                      MOV     [ES:DI],DL
+   386                                  NOSTO:
+   387 0000022F 47                          INC     DI
+   388 00000230 C3                          RET
+   389                                  EOL:
+   390 00000231 E8EBFF                      CALL    STORE
+   391 00000234 E963FE                      JMP     CRLF
+   392                                  NEXT:
+   393 00000237 E8E5FF                      CALL    STORE
+   394 0000023A 41                          INC     CX
+   395 0000023B 41                          INC     CX
+   396 0000023C E8E0FE                      CALL    TAB
+   397 0000023F 89F8                        MOV     AX,DI
+   398 00000241 2407                        AND     AL,7
+   399 00000243 7584                        JNZ     GETBYTE
+   400                                  NEWROW:
+   401 00000245 E852FE                      CALL    CRLF
+   402 00000248 E978FF                      JMP     GETROW          ; Fixed: Replaced 'Ascension' with 'GETROW'
+   403                                  PREV:
+   404 0000024B E8D1FF                      CALL    STORE
+   405 0000024E 4F                          DEC     DI
+   406 0000024F 4F                          DEC     DI
+   407 00000250 EBF3                        JMP     NEWROW
+   408                                  GETLIST:
+   409 00000252 E84B04                      CALL    LIST
+   410 00000255 5F                          POP     DI
+   411 00000256 07                          POP     ES
+   412 00000257 BE[1801]                    MOV     SI,LINEBUF
+   413 0000025A 89D9                        MOV     CX,BX
+   414 0000025C F3                          REP
+   415 0000025D A4                          MOVSB
+   416 0000025E C3                          RET
+   417                                  
+   418                                  FILL:
+   419 0000025F E87103                      CALL    RANGE
+   420 00000262 51                          PUSH    CX
+   421 00000263 50                          PUSH    AX
+   422 00000264 52                          PUSH    DX
+   423 00000265 E83804                      CALL    LIST
+   424 00000268 5F                          POP     DI
+   425 00000269 07                          POP     ES
+   426 0000026A 59                          POP     CX
+   427 0000026B 39CB                        CMP     BX,CX
+   428 0000026D BE[1801]                    MOV     SI,LINEBUF
+   429 00000270 E305                        JCXZ    BIGRNG
+   430 00000272 7203E9D400                  JAE     COPYLIST
+   431                                  BIGRNG:
+   432 00000277 29D9                        SUB     CX,BX
+   433 00000279 87D9                        XCHG    CX,BX
+   434 0000027B 57                          PUSH    DI
+   435 0000027C F3                          REP
+   436 0000027D A4                          MOVSB
+   437 0000027E 5E                          POP     SI
+   438 0000027F 89D9                        MOV     CX,BX
+   439 00000281 06                          PUSH    ES
+   440 00000282 1F                          POP     DS
+   441 00000283 E9C500                      JMP     COPYLIST
+   442                                  
+   443                                  GO:
+   444 00000286 BB[1801]                    MOV     BX,LINEBUF
+   445 00000289 31F6                        XOR     SI,SI
+   446                                  GO1:
+   447 0000028B E83FFE                      CALL    SCANP
+   448 0000028E 7419                        JZ      EXEC
+   449 00000290 B90500                      MOV     CX,5
+   450 00000293 E88703                      CALL    GETHEX
+   451 00000296 8917                        MOV     [BX],DX
+   452 00000298 8867ED                      MOV     [BX-BPLEN+1],AH
+   453 0000029B 43                          INC     BX
+   454 0000029C 43                          INC     BX
+   455 0000029D 46                          INC     SI
+   456 0000029E 83FE0B                      CMP     SI,BPMAX+1
+   457 000002A1 75E8                        JNZ     GO1
+   458 000002A3 B84250                      MOV     AX,5000H+"B"
+   459 000002A6 E9B501                      JMP     ERR
+   460                                  EXEC:
+   461 000002A9 8936[0001]                  MOV     [BRKCNT],SI
+   462 000002AD E8FE03                      CALL    GETEOL
+   463 000002B0 89F1                        MOV     CX,SI
+   464 000002B2 E31A                        JCXZ    NOBP
+   465 000002B4 BE[0401]                    MOV     SI,BPTAB
+   466                                  SETBP:
+   467 000002B7 8B5414                      MOV     DX,[SI+BPLEN]
+   468 000002BA AD                          LODSW
+   469 000002BB E8F602                      CALL    GETSEG
+   470 000002BE 8ED8                        MOV     DS,AX
+   471 000002C0 89D7                        MOV     DI,DX
+   472 000002C2 8A05                        MOV     AL,[DI]
+   473 000002C4 C605CC                      MOV     BYTE [DI],0CCH
+   474 000002C7 06                          PUSH    ES
+   475 000002C8 1F                          POP     DS
+   476 000002C9 8844FE                      MOV     [SI-2],AL
+   477 000002CC E2E9                        LOOP    SETBP
+   478                                  NOBP:
+   479 000002CE C706[0201]0100              MOV     WORD [TCOUNT],1
+   480 000002D4 C7060C00[3405]              MOV     WORD [12],BREAKFIX
+   481 000002DA 8C0E0E00                    MOV     [14],CS
+   482 000002DE C7060400[3B05]              MOV     WORD [4],REENTER
+   483 000002E4 8C0E0600                    MOV     [6],CS
+   484 000002E8 FA                          CLI
+   485 000002E9 C7066400[3B05]              MOV     WORD [64H],REENTER
+   486 000002EF 8C0E6600                    MOV     [66H],CS
+   487 000002F3 BC[CE01]                    MOV     SP,STACK
+   488 000002F6 58                          POP     AX
+   489 000002F7 5B                          POP     BX
+   490 000002F8 59                          POP     CX
+   491 000002F9 5A                          POP     DX
+   492 000002FA 5D                          POP     BP
+   493 000002FB 5D                          POP     BP
+   494 000002FC 5E                          POP     SI
+   495 000002FD 5F                          POP     DI
+   496 000002FE 07                          POP     ES
+   497 000002FF 07                          POP     ES
+   498 00000300 17                          POP     SS
+   499 00000301 8B26[D601]                  MOV     SP,[SPSAVE]
+   500 00000305 FF36[E801]                  PUSH    WORD [FSAVE]
+   501 00000309 FF36[E401]                  PUSH    WORD [CSSAVE]
+   502 0000030D FF36[E601]                  PUSH    WORD [IPSAVE]
+   503 00000311 8E1E[DE01]                  MOV     DS,[DSSAVE]
+   504 00000315 CF                          IRET
+   505                                  
+   506                                  INPUT:
+   507 00000316 B90400                      MOV     CX,4
+   508 00000319 E80103                      CALL    GETHEX
+   509 0000031C EC                          IN      AL,DX
+   510 0000031D E8E4FD                      CALL    HEX
+   511 00000320 E977FD                      JMP     CRLF
+   512                                  
+   513                                  MOVE:
+   514 00000323 E8AD02                      CALL    RANGE
+   515 00000326 51                          PUSH    CX
+   516 00000327 50                          PUSH    AX
+   517 00000328 89D6                        MOV     SI,DX
+   518 0000032A B90500                      MOV     CX,5
+   519 0000032D E8ED02                      CALL    GETHEX
+   520 00000330 E87B03                      CALL    GETEOL
+   521 00000333 E87E02                      CALL    GETSEG
+   522 00000336 89D7                        MOV     DI,DX
+   523 00000338 5B                          POP     BX
+   524 00000339 8EDB                        MOV     DS,BX
+   525 0000033B 8EC0                        MOV     ES,AX
+   526 0000033D 59                          POP     CX
+   527 0000033E 39F7                        CMP     DI,SI
+   528 00000340 19D8                        SBB     AX,BX
+   529 00000342 7207                        JB      COPYLIST
+   530 00000344 49                          DEC     CX
+   531 00000345 01CE                        ADD     SI,CX
+   532 00000347 01CF                        ADD     DI,CX
+   533 00000349 FD                          STD
+   534 0000034A 41                          INC     CX
+   535                                  COPYLIST:
+   536 0000034B A4                          MOVSB
+   537 0000034C 49                          DEC     CX
+   538 0000034D F3                          REP
+   539 0000034E A4                          MOVSB
+   540 0000034F C3                          RET
+   541                                  
+   542                                  OUTPUT:
+   543 00000350 B90400                      MOV     CX,4
+   544 00000353 E8C702                      CALL    GETHEX
+   545 00000356 52                          PUSH    DX
+   546 00000357 B90200                      MOV     CX,2
+   547 0000035A E8C002                      CALL    GETHEX
+   548 0000035D 92                          XCHG    AX,DX
+   549 0000035E 5A                          POP     DX
+   550 0000035F EE                          OUT     DX,AL
+   551 00000360 C3                          RET
+   552                                  
+   553                                  REG:
+   554 00000361 E869FD                      CALL    SCANP
+   555 00000364 7462                        JZ      DISPREG
+   556 00000366 8A15                        MOV     DL,[DI]
+   557 00000368 47                          INC     DI
+   558 00000369 8A35                        MOV     DH,[DI]
+   559 0000036B 80FE0D                      CMP     DH,13
+   560 0000036E 7476                        JZ      FLAG
+   561 00000370 47                          INC     DI
+   562 00000371 E83A03                      CALL    GETEOL
+   563 00000374 80FE20                      CMP     DH," "
+   564 00000377 746D                        JZ      FLAG
+   565 00000379 BF[C507]                    MOV     DI,REGTAB
+   566 0000037C 92                          XCHG    AX,DX
+   567 0000037D 0E                          PUSH    CS
+   568 0000037E 07                          POP     ES
+   569 0000037F B90E00                      MOV     CX,REGTABLEN
+   570 00000382 F2                          REPNZ
+   571 00000383 AF                          SCASW
+   572 00000384 753C                        JNZ     BADREG
+   573 00000386 09C9                        OR      CX,CX
+   574 00000388 7506                        JNZ     NOTPC
+   575 0000038A 4F                          DEC     DI
+   576 0000038B 4F                          DEC     DI
+   577 0000038C 2E8B45FE                    MOV     AX,[CS:DI-2]
+   578                                  NOTPC:
+   579 00000390 E82FFD                      CALL    OUT
+   580 00000393 88E0                        MOV     AL,AH
+   581 00000395 E82AFD                      CALL    OUT
+   582 00000398 E880FD                      CALL    BLANK
+   583 0000039B 1E                          PUSH    DS
+   584 0000039C 07                          POP     ES
+   585 0000039D 8D9D[07FA]                  LEA     BX,[DI+REGDIF-2]
+   586 000003A1 8B17                        MOV     DX,[BX]
+   587 000003A3 E857FD                      CALL    OUT16
+   588 000003A6 E8F1FC                      CALL    CRLF
+   589 000003A9 B03A                        MOV     AL,":"
+   590 000003AB E814FD                      CALL    OUT
+   591 000003AE E8B6FC                      CALL    INBUF
+   592 000003B1 E822FD                      CALL    SCANB
+   593 000003B4 740B                        JZ      RET3
+   594 000003B6 B90400                      MOV     CX,4
+   595 000003B9 E86402                      CALL    GETHEX1
+   596 000003BC E8EF02                      CALL    GETEOL
+   597 000003BF 8917                        MOV     [BX],DX
+   598                                  RET3:
+   599 000003C1 C3                          RET
+   600                                  BADREG:
+   601 000003C2 B84252                      MOV     AX,5200H+"B"
+   602 000003C5 E99600                      JMP     ERR
+   603                                  DISPREG:
+   604 000003C8 BE[C507]                    MOV     SI,REGTAB
+   605 000003CB BB[CE01]                    MOV     BX,AXSAVE
+   606 000003CE B90800                      MOV     CX,8
+   607 000003D1 E86500                      CALL    DISPREGLINE
+   608 000003D4 E8C3FC                      CALL    CRLF
+   609 000003D7 B90500                      MOV     CX,5
+   610 000003DA E85C00                      CALL    DISPREGLINE
+   611 000003DD E83BFD                      CALL    BLANK
+   612 000003E0 E89300                      CALL    DISPFLAGS
+   613 000003E3 E9B4FC                      JMP     CRLF
+   614                                  FLAG:
+   615 000003E6 80FA46                      CMP     DL,"F"
+   616 000003E9 75D7                        JNZ     BADREG
+   617 000003EB E88800                      CALL    DISPFLAGS
+   618 000003EE B02D                        MOV     AL,"-"
+   619 000003F0 E8CFFC                      CALL    OUT
+   620 000003F3 E871FC                      CALL    INBUF
+   621 000003F6 E8DDFC                      CALL    SCANB
+   622 000003F9 31DB                        XOR     BX,BX
+   623 000003FB 8B16[E801]                  MOV     DX,[FSAVE]
+   624                                  GETFLG:
+   625 000003FF 89FE                        MOV     SI,DI
+   626 00000401 AD                          LODSW
+   627 00000402 3C0D                        CMP     AL,13
+   628 00000404 7466                        JZ      SAVCHG
+   629 00000406 80FC0D                      CMP     AH,13
+   630 00000409 7466                        JZ      FLGERR
+   631 0000040B BF[E107]                    MOV     DI,FLAGTAB
+   632 0000040E B92000                      MOV     CX,32
+   633 00000411 0E                          PUSH    CS
+   634 00000412 07                          POP     ES
+   635 00000413 F2                          REPNE
+   636 00000414 AF                          SCASW
+   637 00000415 755A                        JNZ     FLGERR
+   638 00000417 88CD                        MOV     CH,CL
+   639 00000419 80E10F                      AND     CL,0FH
+   640 0000041C B80100                      MOV     AX,1
+   641 0000041F D3C0                        ROL     AX,CL
+   642 00000421 85D8                        TEST    AX,BX
+   643 00000423 7533                        JNZ     REPFLG
+   644 00000425 09C3                        OR      BX,AX
+   645 00000427 09C2                        OR      DX,AX
+   646 00000429 F6C510                      TEST    CH,16
+   647 0000042C 7502                        JNZ     NEXFLG
+   648 0000042E 31C2                        XOR     DX,AX
+   649                                  NEXFLG:
+   650 00000430 89F7                        MOV     DI,SI
+   651 00000432 1E                          PUSH    DS
+   652 00000433 07                          POP     ES
+   653 00000434 E896FC                      CALL    SCANP
+   654 00000437 EBC6                        JMP     GETFLG
+   655                                  DISPREGLINE:
+   656 00000439 2E                          CS
+   657 0000043A AD                          LODSW
+   658 0000043B E884FC                      CALL    OUT
+   659 0000043E 88E0                        MOV     AL,AH
+   660 00000440 E87FFC                      CALL    OUT
+   661 00000443 B03D                        MOV     AL,"="
+   662 00000445 E87AFC                      CALL    OUT
+   663 00000448 8B17                        MOV     DX,[BX]
+   664 0000044A 43                          INC     BX
+   665 0000044B 43                          INC     BX
+   666 0000044C E8AEFC                      CALL    OUT16
+   667 0000044F E8C9FC                      CALL    BLANK
+   668 00000452 E8C6FC                      CALL    BLANK
+   669 00000455 E2E2                        LOOP    DISPREGLINE
+   670 00000457 C3                          RET
+   671                                  REPFLG:
+   672 00000458 B84446                      MOV     AX,4600H+"D"
+   673                                  FERR:
+   674 0000045B E80E00                      CALL    SAVCHG
+   675                                  ERR:
+   676 0000045E E861FC                      CALL    OUT
+   677 00000461 88E0                        MOV     AL,AH
+   678 00000463 E85CFC                      CALL    OUT
+   679 00000466 BE[5108]                    MOV     SI,ERRMES
+   680 00000469 E95502                      JMP     PRINT
+   681                                  SAVCHG:
+   682 0000046C 8916[E801]                  MOV     [FSAVE],DX
+   683 00000470 C3                          RET
+   684                                  FLGERR:
+   685 00000471 B84246                      MOV     AX,4600H+"B"
+   686 00000474 EBE5                        JMP     FERR
+   687                                  DISPFLAGS:
+   688 00000476 BE[E107]                    MOV     SI,FLAGTAB
+   689 00000479 B91000                      MOV     CX,16
+   690 0000047C 8B16[E801]                  MOV     DX,[FSAVE]
+   691                                  DFLAGS:
+   692 00000480 2E                          CS
+   693 00000481 AD                          LODSW
+   694 00000482 D1E2                        SHL     DX,1
+   695 00000484 7204                        JC      FLAGSET
+   696 00000486 2E8B441E                    MOV     AX,[CS:SI+30]
+   697                                  FLAGSET:
+   698 0000048A 09C0                        OR      AX,AX
+   699 0000048C 740B                        JZ      NEXTFLG
+   700 0000048E E831FC                      CALL    OUT
+   701 00000491 88E0                        MOV     AL,AH
+   702 00000493 E82CFC                      CALL    OUT
+   703 00000496 E882FC                      CALL    BLANK
+   704                                  NEXTFLG:
+   705 00000499 E2E5                        LOOP    DFLAGS
+   706 0000049B C3                          RET
+   707                                  
+   708                                  SEARCH:
+   709 0000049C E83401                      CALL    RANGE
+   710 0000049F 51                          PUSH    CX
+   711 000004A0 50                          PUSH    AX
+   712 000004A1 52                          PUSH    DX
+   713 000004A2 E8FB01                      CALL    LIST
+   714 000004A5 4B                          DEC     BX
+   715 000004A6 5F                          POP     DI
+   716 000004A7 07                          POP     ES
+   717 000004A8 59                          POP     CX
+   718 000004A9 29D9                        SUB     CX,BX
+   719                                  SCAN:
+   720 000004AB BE[1801]                    MOV     SI,LINEBUF
+   721 000004AE AC                          LODSB
+   722                                  DOSCAN:
+   723 000004AF AE                          SCASB
+   724 000004B0 E0FD                        LOOPNE  DOSCAN
+   725 000004B2 7518                        JNZ     RET
+   726 000004B4 53                          PUSH    BX
+   727 000004B5 87CB                        XCHG    BX,CX
+   728 000004B7 57                          PUSH    DI
+   729 000004B8 F3                          REPE
+   730 000004B9 A6                          CMPSB
+   731 000004BA 89D9                        MOV     CX,BX
+   732 000004BC 5F                          POP     DI
+   733 000004BD 5B                          POP     BX
+   734 000004BE 7508                        JNZ     TEST
+   735 000004C0 4F                          DEC     DI
+   736 000004C1 E82AFC                      CALL    OUTDI
+   737 000004C4 47                          INC     DI
+   738 000004C5 E8D2FB                      CALL    CRLF
+   739                                  TEST:
+   740 000004C8 E302                        JCXZ    RET
+   741 000004CA EBDF                        JMP     SCAN
+   742                                  RET:
+   743 000004CC C3                          RET
+   744                                  
+   745                                  TRACE:
+   746 000004CD E8FDFB                      CALL    SCANP
+   747 000004D0 E86E01                      CALL    HEXIN
+   748 000004D3 BA0100                      MOV     DX,1
+   749 000004D6 7206                        JC      STOCNT
+   750 000004D8 B90400                      MOV     CX,4
+   751 000004DB E83F01                      CALL    GETHEX
+   752                                  STOCNT:
+   753 000004DE 8916[0201]                  MOV     [TCOUNT],DX
+   754 000004E2 E8C901                      CALL    GETEOL
+   755                                  STEP:
+   756 000004E5 C706[0001]0000              MOV     WORD [BRKCNT],0
+   757 000004EB 800E[E901]01                OR      BYTE [FSAVE+1],1
+   758                                  EXIT:
+   759 000004F0 C7060C00[3405]              MOV     WORD [12],BREAKFIX
+   760 000004F6 8C0E0E00                    MOV     [14],CS
+   761 000004FA C7060400[3B05]              MOV     WORD [4],REENTER
+   762 00000500 8C0E0600                    MOV     [6],CS
+   763 00000504 FA                          CLI
+   764 00000505 C7066400[3B05]              MOV     WORD [64H],REENTER
+   765 0000050B 8C0E6600                    MOV     [66H],CS
+   766 0000050F BC[CE01]                    MOV     SP,STACK
+   767 00000512 58                          POP     AX
+   768 00000513 5B                          POP     BX
+   769 00000514 59                          POP     CX
+   770 00000515 5A                          POP     DX
+   771 00000516 5D                          POP     BP
+   772 00000517 5D                          POP     BP
+   773 00000518 5E                          POP     SI
+   774 00000519 5F                          POP     DI
+   775 0000051A 07                          POP     ES
+   776 0000051B 07                          POP     ES
+   777 0000051C 17                          POP     SS
+   778 0000051D 8B26[D601]                  MOV     SP,[SPSAVE]
+   779 00000521 FF36[E801]                  PUSH    WORD [FSAVE]
+   780 00000525 FF36[E401]                  PUSH    WORD [CSSAVE]
+   781 00000529 FF36[E601]                  PUSH    WORD [IPSAVE]
+   782 0000052D 8E1E[DE01]                  MOV     DS,[DSSAVE]
+   783 00000531 CF                          IRET
+   784                                  STEP1:
+   785 00000532 EBB1                        JMP     STEP
+   786                                  
+   787                                  BREAKFIX:
+   788 00000534 87EC                        XCHG    SP,BP
+   789 00000536 FF4E00                      DEC     WORD [BP]
+   790 00000539 87EC                        XCHG    SP,BP
+   791                                  
+   792                                  REENTER:
+   793 0000053B 50                          PUSH    AX
+   794 0000053C 1E                          PUSH    DS
+   795 0000053D 31C0                        XOR     AX,AX
+   796 0000053F 8ED8                        MOV     DS,AX
+   797 00000541 8926[D601]                  MOV     [SPSAVE],SP
+   798 00000545 8C16[E201]                  MOV     [SSSAVE],SS
+   799 00000549 1F                          POP     DS
+   800 0000054A 58                          POP     AX
+   801 0000054B 31E4                        XOR     SP,SP
+   802 0000054D 8ED4                        MOV     SS,SP
+   803 0000054F BC[E201]                    MOV     SP,RSTACK
+   804 00000552 06                          PUSH    ES
+   805 00000553 1E                          PUSH    DS
+   806 00000554 57                          PUSH    DI
+   807 00000555 56                          PUSH    SI
+   808 00000556 55                          PUSH    BP
+   809 00000557 4C                          DEC     SP
+   810 00000558 4C                          DEC     SP
+   811 00000559 52                          PUSH    DX
+   812 0000055A 51                          PUSH    CX
+   813 0000055B 53                          PUSH    BX
+   814 0000055C 50                          PUSH    AX
+   815 0000055D 16                          PUSH    SS
+   816 0000055E 1F                          POP     DS
+   817 0000055F 8B26[D601]                  MOV     SP,[SPSAVE]
+   818 00000563 8E16[E201]                  MOV     SS,[SSSAVE]
+   819 00000567 83C404                      ADD     SP,4
+   820 0000056A 8F06[E601]                  POP     WORD [IPSAVE]
+   821 0000056E 8F06[E401]                  POP     WORD [CSSAVE]
+   822 00000572 58                          POP     AX
+   823 00000573 80E4FE                      AND     AH,0FEH
+   824 00000576 A3[E801]                    MOV     [FSAVE],AX
+   825 00000579 8926[D601]                  MOV     [SPSAVE],SP
+   826 0000057D 1E                          PUSH    DS
+   827 0000057E 07                          POP     ES
+   828 0000057F 1E                          PUSH    DS
+   829 00000580 17                          POP     SS
+   830 00000581 BC[CE01]                    MOV     SP,STACK
+   831 00000584 C7066400[C706]              MOV     WORD [64H],INT
+   832 0000058A FB                          STI
+   833 0000058B FC                          CLD
+   834 0000058C E80BFB                      CALL    CRLF
+   835 0000058F E836FE                      CALL    DISPREG
+   836 00000592 FF0E[0201]                  DEC     WORD [TCOUNT]
+   837 00000596 759A                        JNZ     STEP1
+   838                                  ENDGO:
+   839 00000598 BE[0401]                    MOV     SI,BPTAB
+   840 0000059B 8B0E[0001]                  MOV     CX,[BRKCNT]
+   841 0000059F E310                        JCXZ    COMJMP
+   842                                  CLEARBP:
+   843 000005A1 8B5414                      MOV     DX,[SI+BPLEN]
+   844 000005A4 AD                          LODSW
+   845 000005A5 50                          PUSH    AX
+   846 000005A6 E80B00                      CALL    GETSEG
+   847 000005A9 8EC0                        MOV     ES,AX
+   848 000005AB 89D7                        MOV     DI,DX
+   849 000005AD 58                          POP     AX
+   850 000005AE AA                          STOSB
+   851 000005AF E2F0                        LOOP    CLEARBP
+   852                                  COMJMP:
+   853 000005B1 E979FA                      JMP     COMMAND
+   854                                  
+   855                                  GETSEG:
+   856 000005B4 88D0                        MOV     AL,DL
+   857 000005B6 240F                        AND     AL,0FH
+   858 000005B8 E80700                      CALL    SHIFT4
+   859 000005BB 88C2                        MOV     DL,AL
+   860 000005BD 88F0                        MOV     AL,DH
+   861 000005BF 30F6                        XOR     DH,DH
+   862 000005C1 C3                          RET
+   863                                  
+   864                                  SHIFT4:
+   865 000005C2 D1E2                        SHL     DX,1
+   866 000005C4 D0D4                        RCL     AH,1
+   867 000005C6 D1E2                        SHL     DX,1
+   868 000005C8 D0D4                        RCL     AH,1
+   869 000005CA D1E2                        SHL     DX,1
+   870 000005CC D0D4                        RCL     AH,1
+   871 000005CE D1E2                        SHL     DX,1
+   872 000005D0 D0D4                        RCL     AH,1
+   873 000005D2 C3                          RET
+   874                                  
+   875                                  RANGE:
+   876 000005D3 B90500                      MOV     CX,5
+   877 000005D6 E84400                      CALL    GETHEX
+   878 000005D9 50                          PUSH    AX
+   879 000005DA 52                          PUSH    DX
+   880 000005DB E8EFFA                      CALL    SCANP
+   881 000005DE 803D4C                      CMP     BYTE [DI],"L"
+   882 000005E1 741C                        JE      GETLEN
+   883 000005E3 BA8000                      MOV     DX,128
+   884 000005E6 E85800                      CALL    HEXIN
+   885 000005E9 721B                        JC      RNGRET
+   886 000005EB B90500                      MOV     CX,5
+   887 000005EE E82C00                      CALL    GETHEX
+   888 000005F1 89D1                        MOV     CX,DX
+   889 000005F3 5A                          POP     DX
+   890 000005F4 5B                          POP     BX
+   891 000005F5 29D1                        SUB     CX,DX
+   892 000005F7 18FC                        SBB     AH,BH
+   893 000005F9 751C                        JNZ     RNGERR
+   894 000005FB 93                          XCHG    AX,BX
+   895 000005FC 41                          INC     CX
+   896 000005FD EB0B                        JMP     RNGCHK
+   897                                  GETLEN:
+   898 000005FF 47                          INC     DI
+   899 00000600 B90400                      MOV     CX,4
+   900 00000603 E81700                      CALL    GETHEX
+   901                                  RNGRET:
+   902 00000606 89D1                        MOV     CX,DX
+   903 00000608 5A                          POP     DX
+   904 00000609 58                          POP     AX
+   905                                  RNGCHK:
+   906 0000060A 89D3                        MOV     BX,DX
+   907 0000060C 83E30F                      AND     BX,0FH
+   908 0000060F E304                        JCXZ    MAXRNG
+   909 00000611 01CB                        ADD     BX,CX
+   910 00000613 739F                        JNC     GETSEG
+   911                                  MAXRNG:
+   912 00000615 749D                        JZ      GETSEG
+   913                                  RNGERR:
+   914 00000617 B85247                      MOV     AX,4700H+"R"
+   915 0000061A E941FE                      JMP     ERR
+   916                                  
+   917                                  GETHEX:
+   918 0000061D E8ADFA                      CALL    SCANP
+   919                                  GETHEX1:
+   920 00000620 31D2                        XOR     DX,DX
+   921 00000622 88F4                        MOV     AH,DH
+   922 00000624 E81A00                      CALL    HEXIN
+   923 00000627 7303E98900                  JC      ERROR
+   924 0000062C 88C2                        MOV     DL,AL
+   925                                  GETLP:
+   926 0000062E 47                          INC     DI
+   927 0000062F 49                          DEC     CX
+   928 00000630 E80E00                      CALL    HEXIN
+   929 00000633 7303E994FE                  JC      RET
+   930 00000638 E37B                        JCXZ    ERROR
+   931 0000063A E885FF                      CALL    SHIFT4
+   932 0000063D 08C2                        OR      DL,AL
+   933 0000063F EBED                        JMP     GETLP
+   934                                  
+   935                                  HEXIN:
+   936 00000641 8A05                        MOV     AL,[DI]
+   937 00000643 3C61                        CMP     AL,'a'
+   938 00000645 7206                        JB      HEXCHK      ; If AL is less than 'a', it's either a digit or already uppercase.
+   939 00000647 3C66                        CMP     AL,'f'
+   940 00000649 7702                        JA      HEXCHK      ; If AL is greater than 'f', it's not a lowercase hex digit.
+   941 0000064B 2C20                        SUB     AL,20H      ; Convert lowercase letter to uppercase.
+   942                                  
+   943                                  HEXCHK:
+   944 0000064D 2C30                        SUB     AL,"0"
+   945 0000064F 7303E978FE                  JC      RET
+   946 00000654 3C0A                        CMP     AL,10
+   947 00000656 F5                          CMC
+   948 00000657 7203E970FE                  JNC     RET
+   949 0000065C 2C07                        SUB     AL,7
+   950 0000065E 3C0A                        CMP     AL,10
+   951 00000660 7303E967FE                  JC      RET
+   952 00000665 3C10                        CMP     AL,16
+   953 00000667 F5                          CMC
+   954 00000668 C3                          RET
+   955                                  
+   956                                  LISTITEM:
+   957 00000669 E861FA                      CALL    SCANP
+   958 0000066C E8D2FF                      CALL    HEXIN
+   959 0000066F 720B                        JC      STRINGCHK
+   960 00000671 B90200                      MOV     CX,2
+   961 00000674 E8A6FF                      CALL    GETHEX
+   962 00000677 8817                        MOV     [BX],DL
+   963 00000679 43                          INC     BX
+   964                                  GRET:
+   965 0000067A F8                          CLC
+   966 0000067B C3                          RET
+   967                                  STRINGCHK:
+   968 0000067C 8A05                        MOV     AL,[DI]
+   969 0000067E 3C27                        CMP     AL,"'"
+   970 00000680 7406                        JZ      STRING
+   971 00000682 3C22                        CMP     AL,'"'
+   972 00000684 7402                        JZ      STRING
+   973 00000686 F9                          STC
+   974 00000687 C3                          RET
+   975                                  STRING:
+   976 00000688 88C4                        MOV     AH,AL
+   977 0000068A 47                          INC     DI
+   978                                  STRNGLP:
+   979 0000068B 8A05                        MOV     AL,[DI]
+   980 0000068D 47                          INC     DI
+   981 0000068E 3C0D                        CMP     AL,13
+   982 00000690 7423                        JZ      ERROR
+   983 00000692 38E0                        CMP     AL,AH
+   984 00000694 7505                        JNZ     STOSTRG
+   985 00000696 3A25                        CMP     AH,[DI]
+   986 00000698 75E0                        JNZ     GRET
+   987 0000069A 47                          INC     DI
+   988                                  STOSTRG:
+   989 0000069B 8807                        MOV     [BX],AL
+   990 0000069D 43                          INC     BX
+   991 0000069E EBEB                        JMP     STRNGLP
+   992                                  
+   993                                  LIST:
+   994 000006A0 BB[1801]                    MOV     BX,LINEBUF
+   995                                  LISTLP:
+   996 000006A3 E8C3FF                      CALL    LISTITEM
+   997 000006A6 73FB                        JNC     LISTLP
+   998 000006A8 81EB[1801]                  SUB     BX,LINEBUF
+   999 000006AC 7407                        JZ      ERROR
+  1000                                  GETEOL:
+  1001 000006AE E825FA                      CALL    SCANB
+  1002 000006B1 7502                        JNZ     ERROR
+  1003 000006B3 C3                          RET
+  1004                                  
+  1005                                  PERR:
+  1006 000006B4 4F                          DEC     DI
+  1007                                  ERROR:
+  1008 000006B5 81EF[1701]                  SUB     DI,LINEBUF-1
+  1009 000006B9 89F9                        MOV     CX,DI
+  1010 000006BB E861FA                      CALL    TAB
+  1011 000006BE BE[5008]                    MOV     SI,SYNERR
+  1012                                  PRINT:
+  1013 000006C1 E8F4F9                      CALL    PRINTMES
+  1014 000006C4 E966F9                      JMP     COMMAND
+  1015                                  
+  1016                                  INT:
+  1017 000006C7 50                          PUSH    AX
+  1018                                  
+  1019 000006C8 B020                        MOV     AL,20H
+  1020 000006CA E6F2                        OUT     BASE+2,AL
+  1021                                  
+  1022 000006CC E4F6                        IN      AL,DATA
+  1023 000006CE 247F                        AND     AL,7FH
+  1024 000006D0 3C13                        CMP     AL,"S"-"@"
+  1025 000006D2 7503                        JNZ     NOSTOP
+  1026 000006D4 E8D1F9                      CALL    IN
+  1027                                  NOSTOP:
+  1028 000006D7 3C03                        CMP     AL,"C"-"@"
+  1029 000006D9 7402                        JZ      BREAK
+  1030 000006DB 58                          POP     AX
+  1031 000006DC CF                          IRET
+  1032                                  BREAK:
+  1033 000006DD E8BAF9                      CALL    CRLF
+  1034 000006E0 E94AF9                      JMP     COMMAND
+  1035                                  
+  1036                                  ; Intel HEX Loader routines (adapted from ATMONT88)
+  1037                                  LOADHEX:
+  1038 000006E3 E8C8FF                      CALL    GETEOL          ; Ensure no arguments after 'L'
+  1039 000006E6 BE[5C08]                    MOV     SI,LOADMSG
+  1040 000006E9 E8CCF9                      CALL    PRINTMES        ; Print "Load Intel hex file..."
+  1041 000006EC 30C0                        XOR     AL,AL
+  1042 000006EE A2[EB01]                    MOV     [BCSERR],AL     ; Clear checksum error flag
+  1043 000006F1 A2[EC01]                    MOV     [EXITFL],AL     ; Clear exit flag
+  1044 000006F4 E80600                      CALL    GETREC          ; Start loading records
+  1045 000006F7 E8B500                      CALL    CHKERR          ; Check for checksum errors
+  1046 000006FA E930F9                      JMP     COMMAND         ; Return to prompt
+  1047                                  
+  1048                                  GETREC:
+  1049 000006FD A0[EC01]                    MOV     AL,[EXITFL]
+  1050 00000700 3C01                        CMP     AL,1
+  1051 00000702 7478                        JE      RECEXIT         ; Exit if done
+  1052 00000704 E8A1F9                      CALL    IN              ; Read character
+  1053 00000707 3C1B                        CMP     AL,ESC
+  1054 00000709 746F                        JE      CHKEXIT         ; Exit on ESC
+  1055 0000070B 3C3A                        CMP     AL,':'
+  1056 0000070D 75EE                        JNE     GETREC          ; Wait for start of record
+  1057 0000070F E8B0F9                      CALL    OUT             ; Echo ':'
+  1058 00000712 30C0                        XOR     AL,AL
+  1059 00000714 A2[EA01]                    MOV     [BCS],AL        ; Clear checksum
+  1060                                  
+  1061                                      ; Get record length
+  1062 00000717 31C9                        XOR     CX,CX
+  1063 00000719 E86100                      CALL    GETHX           ; Length in AL
+  1064 0000071C 88C1                        MOV     CL,AL           ; Save length
+  1065 0000071E 0006[EA01]                  ADD     [BCS],AL        ; Update checksum
+  1066                                  
+  1067                                      ; Get address
+  1068 00000722 E85800                      CALL    GETHX           ; High byte in AL
+  1069 00000725 88C7                        MOV     BH,AL
+  1070 00000727 0006[EA01]                  ADD     [BCS],AL
+  1071 0000072B E84F00                      CALL    GETHX           ; Low byte in AL
+  1072 0000072E 88C3                        MOV     BL,AL
+  1073 00000730 0006[EA01]                  ADD     [BCS],AL        ; BX = address
+  1074                                  
+  1075                                      ; Save address to SI
+  1076 00000734 89DE                        MOV     SI,BX
+  1077                                  
+  1078                                      ; Get record type
+  1079 00000736 E84400                      CALL    GETHX           ; Type in AL
+  1080 00000739 0006[EA01]                  ADD     [BCS],AL
+  1081 0000073D 3C01                        CMP     AL,1
+  1082 0000073F 742F                        JE      EOFREC          ; End of file record
+  1083                                  
+  1084                                      ; Data record
+  1085 00000741 51                          PUSH    CX              ; Save length
+  1086 00000742 89F3                        MOV     BX,SI           ; Destination address
+  1087 00000744 E30C                        JCXZ    SKPDAT          ; Skip if no data
+  1088                                  
+  1089                                  DATLOP:
+  1090 00000746 E83400                      CALL    GETHX           ; Get data byte
+  1091 00000749 8807                        MOV     [BX],AL         ; Write to memory
+  1092 0000074B 0006[EA01]                  ADD     [BCS],AL        ; Update checksum
+  1093 0000074F 43                          INC     BX
+  1094 00000750 E2F4                        LOOP    DATLOP
+  1095                                  
+  1096                                  SKPDAT:
+  1097 00000752 59                          POP     CX              ; Restore length
+  1098                                  
+  1099                                      ; Verify checksum
+  1100 00000753 A0[EA01]                    MOV     AL,[BCS]
+  1101 00000756 F6D0                        NOT     AL
+  1102 00000758 FEC0                        INC     AL              ; Two's complement
+  1103 0000075A A2[EA01]                    MOV     [BCS],AL
+  1104 0000075D E81D00                      CALL    GETHX           ; Get record checksum
+  1105 00000760 3A06[EA01]                  CMP     AL,[BCS]
+  1106 00000764 7405                        JE      RECCOR
+  1107 00000766 B001                        MOV     AL,1
+  1108 00000768 A2[EB01]                    MOV     [BCSERR],AL     ; Set error flag
+  1109                                  
+  1110                                  RECCOR:
+  1111 0000076B E82CF9                      CALL    CRLF
+  1112 0000076E EB8D                        JMP     GETREC
+  1113                                  
+  1114                                  EOFREC:
+  1115 00000770 E80A00                      CALL    GETHX           ; Get EOF checksum
+  1116 00000773 B001                        MOV     AL,1
+  1117 00000775 A2[EC01]                    MOV     [EXITFL],AL     ; Set exit flag
+  1118 00000778 EB02                        JMP     RECEXIT
+  1119                                  
+  1120                                  CHKEXIT:
+  1121                                      ;CALL    CRLF
+  1122 0000077A EB33                        JMP     CHKERR          ; Check errors and exit
+  1123                                  
+  1124                                  RECEXIT:
+  1125 0000077C C3                          RET
+  1126                                  
+  1127                                  GETHX:
+  1128 0000077D 51                          PUSH    CX
+  1129 0000077E 53                          PUSH    BX
+  1130 0000077F E826F9                      CALL    IN              ; Read first digit
+  1131 00000782 88C4                        MOV     AH,AL
+  1132 00000784 E81F00                      CALL    TOHEX           ; Convert to nibble
+  1133 00000787 D0C0                        ROL     AL,1
+  1134 00000789 D0C0                        ROL     AL,1
+  1135 0000078B D0C0                        ROL     AL,1
+  1136 0000078D D0C0                        ROL     AL,1           ; Shift to high nibble
+  1137 0000078F 88C3                        MOV     BL,AL
+  1138 00000791 E814F9                      CALL    IN              ; Read second digit
+  1139 00000794 88C7                        MOV     BH,AL
+  1140 00000796 E80D00                      CALL    TOHEX           ; Convert to nibble
+  1141 00000799 00D8                        ADD     AL,BL           ; Combine nibbles
+  1142 0000079B 50                          PUSH    AX
+  1143 0000079C E865F9                      CALL    HEX             ; Echo byte
+  1144 0000079F E879F9                      CALL    BLANK           ; Space after byte
+  1145 000007A2 58                          POP     AX
+  1146 000007A3 5B                          POP     BX
+  1147 000007A4 59                          POP     CX
+  1148 000007A5 C3                          RET
+  1149                                  
+  1150                                  TOHEX:
+  1151 000007A6 2C30                        SUB     AL,'0'
+  1152 000007A8 3C0A                        CMP     AL,10
+  1153 000007AA 7C02                        JL      ZERONIN
+  1154 000007AC 2C07                        SUB     AL,7            ; Adjust for A-F (no lowercase support)
+  1155                                  ZERONIN:
+  1156 000007AE C3                          RET
+  1157                                  
+  1158                                  CHKERR:
+  1159 000007AF E8E8F8                      CALL    CRLF
+  1160 000007B2 A0[EB01]                    MOV     AL,[BCSERR]
+  1161 000007B5 3C01                        CMP     AL,1
+  1162 000007B7 7506                        JNE     NOERR
+  1163 000007B9 BE[7408]                    MOV     SI,CSERRMSG
+  1164 000007BC E9F9F8                      JMP     PRINTMES
+  1165                                  NOERR:
+  1166 000007BF BE[8808]                    MOV     SI,OKMSG
+  1167 000007C2 E9F3F8                      JMP     PRINTMES
+  1168                                  
+  1169                                  ; Data section
+  1170                                  REGTAB:
+  1171 000007C5 415842584358445853-         DB      "AXBXCXDXSPBPSIDIDSESSSCSIPPC"
+  1171 000007CE 504250534944494453-
+  1171 000007D7 455353534353495050-
+  1171 000007E0 43                 
+  1172                                  REGDIF: EQU     AXSAVE-REGTAB
+  1173                                  
+  1174                                  FLAGTAB:
+  1175                                  FLAGTAB:
+  1176 000007E1 0000                            DW      0
+  1177 000007E3 0000                            DW      0
+  1178 000007E5 0000                            DW      0
+  1179 000007E7 0000                            DW      0
+  1180 000007E9 4F56                            DB      "OV"
+  1181 000007EB 444E                            DB      "DN"
+  1182 000007ED 4549                            DB      "EI"
+  1183 000007EF 0000                            DW      0
+  1184 000007F1 4E47                            DB      "NG"
+  1185 000007F3 5A52                            DB      "ZR"
+  1186 000007F5 0000                            DW      0
+  1187 000007F7 4143                            DB      "AC"
+  1188 000007F9 0000                            DW      0
+  1189 000007FB 5045                            DB      "PE"
+  1190 000007FD 0000                            DW      0
+  1191 000007FF 4359                            DB      "CY"
+  1192 00000801 0000                            DW      0
+  1193 00000803 0000                            DW      0
+  1194 00000805 0000                            DW      0
+  1195 00000807 0000                            DW      0
+  1196 00000809 4E56                            DB      "NV"
+  1197 0000080B 5550                            DB      "UP"
+  1198 0000080D 4449                            DB      "DI"
+  1199 0000080F 0000                            DW      0
+  1200 00000811 504C                            DB      "PL"
+  1201 00000813 4E5A                            DB      "NZ"
+  1202 00000815 0000                            DW      0
+  1203 00000817 4E41                            DB      "NA"
+  1204 00000819 0000                            DW      0
+  1205 0000081B 504F                            DB      "PO"
+  1206 0000081D 0000                            DW      0
+  1207 0000081F 4E43                            DB      "NC"
+  1208                                  
+  1209 00000821 0D0A0A534350203830-     HEADER: DB      13,10,10,"SCP 8086 Monitor 1.5 with Intel HEX Loader",13,10+80H
+  1209 0000082A 3836204D6F6E69746F-
+  1209 00000833 7220312E3520776974-
+  1209 0000083C 6820496E74656C2048-
+  1209 00000845 4558204C6F61646572-
+  1209 0000084E 0D8A               
+  1210 00000850 5E                      SYNERR: DB      "^"
+  1211 00000851 204572726F720D8A        ERRMES: DB      " Error",13,10+80H
+  1212 00000859 082088                  BACMES: DB      8,32,8+80H
+  1213 0000085C 4C6F616420496E7465-     LOADMSG:DB      "Load Intel hex file...",13,10+80H
+  1213 00000865 6C206865782066696C-
+  1213 0000086E 652E2E2E0D8A       
+  1214 00000874 0D0A436865636B7375-     CSERRMSG:DB     13,10,"Checksum errors!",13,10+80H
+  1214 0000087D 6D206572726F727321-
+  1214 00000886 0D8A               
+  1215 00000888 4E6F206572726F7273-     OKMSG:  DB      "No errors",13,10+80H
+  1215 00000891 0D8A               
+  1216                                  
+  1217                                  ; RESET vector at 0FFF0H
+  1218 00000893 90<rep F75Dh>           TIMES   0FFF0H - ($-$$) DB 90H
+  1219 0000FFF0 EA                      DB      0EAH
+  1220 0000FFF1 [0000]00F0              DW      RESET, 0F000H
+  1221 0000FFF5 00<rep Bh>              TIMES   10000H - ($-$$) DB 00H
