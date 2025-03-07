@@ -45,3 +45,4 @@
 - `t8088_min_scp_v15`: Seattle Computer Products 8086 Monitor version 1.5  3-19-82 by Tim Paterson. ASM, Listing, hex and bin code.
 - `t8088_hello_world`: Simple hello world to isolate serial routines.
 - `t8088_serial_echo`: Simple serial echo to isolate serial i/o routines.
+- `t8088_min_scp_v15_Loader`: Seattle Computer Products 8086 Monitor version 1.5 3-19-82 by Tim Paterson. I have added in an Intel HEX Loader so that user programs can be uploaded into memory. A Programs folder contains some example programs.
