@@ -1,0 +1,175 @@
+ca65 V2.19 - Git 16258d8
+Main file   : ..\code\k14500_basic_io_1.s
+Current file: ..\code\k14500_basic_io_1.s
+
+000000r 1               ;
+000000r 1               ; Filename: k14500_basic_io_1.s
+000000r 1               ; Title: Basic I/O Operations for k14500B
+000000r 1               ; Date: 17/03/2025
+000000r 1               ;
+000000r 1               ; This program demonstrates basic I/O operations for the k14500B.
+000000r 1               ; It includes examples of reading button states, controlling LEDs,
+000000r 1               ; inverting button states, conditional LED control, and latching LED states.
+000000r 1               ; The code is designed to run on the RetroShield k14500B platform.
+000000r 1               ;
+000000r 1               
+000000r 1               .include "system.inc"
+000000r 2               ;
+000000r 2               ; MC14500 assembler using ca65 macros
+000000r 2               ; Yaroslav Veremenko (c) 2022
+000000r 2               ; Adjusted for MC14500B 4-bit jump limitation ($00-$0F), no runtime checks
+000000r 2               ;
+000000r 2               
+000000r 2               .feature ubiquitous_idents
+000000r 2               .feature string_escapes
+000000r 2               .setcpu "none"
+000000r 2               
+000000r 2               ; Instruction set (unchanged)
+000000r 2               .define I_NOP0 0
+000000r 2               .define I_LD 1
+000000r 2               .define I_LDC 2
+000000r 2               .define I_AND 3
+000000r 2               .define I_ANDC 4
+000000r 2               .define I_OR 5
+000000r 2               .define I_ORC 6
+000000r 2               .define I_XNOR 7
+000000r 2               .define I_STO 8
+000000r 2               .define I_STOC 9
+000000r 2               .define I_IEN 10
+000000r 2               .define I_OEN 11
+000000r 2               .define I_JMP 12
+000000r 2               .define I_RTN 13
+000000r 2               .define I_SKZ 14
+000000r 2               .define I_NOPF 15
+000000r 2               
+000000r 2               ; I/O and memory mapping (unchanged)
+000000r 2               RR = $8
+000000r 2               IN1 = $9
+000000r 2               IN2 = $A
+000000r 2               IN3 = $B
+000000r 2               IN4 = $C
+000000r 2               IN5 = $D
+000000r 2               IN6 = $E
+000000r 2               IN7 = $F
+000000r 2               
+000000r 2               MEM0 = $0
+000000r 2               MEM1 = $1
+000000r 2               MEM2 = $2
+000000r 2               MEM3 = $3
+000000r 2               MEM4 = $4
+000000r 2               MEM5 = $5
+000000r 2               MEM6 = $6
+000000r 2               MEM7 = $7
+000000r 2               
+000000r 2               OUT0 = $8
+000000r 2               OUT1 = $9
+000000r 2               OUT2 = $A
+000000r 2               OUT3 = $B
+000000r 2               OUT4 = $C
+000000r 2               OUT5 = $D
+000000r 2               OUT6 = $E
+000000r 2               OUT7 = $F
+000000r 2               
+000000r 2               .macro __lit_instr op, addr
+000000r 2                   ; MC14500B uses 4-bit address field ($00-$0F) for jmp.
+000000r 2                   ; Addresses beyond $0F are masked to low 4 bits ($00-$0F).
+000000r 2                   ; Ensure targets are within $00-$0F manually, or use multi-step jumps/paging for larger addresses.
+000000r 2                   .byte <(((op) << 4) | ((<(addr)) & $0F))
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro __instr op, addr
+000000r 2                   __lit_instr op, addr
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; Instruction macros (unchanged)
+000000r 2               .macro nop0 addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_NOP0, 0
+000000r 2               .else
+000000r 2                   __instr I_NOP0, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               .macro ld addr
+000000r 2                   __instr I_LD, addr
+000000r 2               .endmacro
+000000r 2               .macro ldc addr
+000000r 2                   __instr I_LDC, addr
+000000r 2               .endmacro
+000000r 2               .macro and addr
+000000r 2                   __instr I_AND, addr
+000000r 2               .endmacro
+000000r 2               .macro andc addr
+000000r 2                   __instr I_ANDC, addr
+000000r 2               .endmacro
+000000r 2               .macro or addr
+000000r 2                   __instr I_OR, addr
+000000r 2               .endmacro
+000000r 2               .macro orc addr
+000000r 2                   __instr I_ORC, addr
+000000r 2               .endmacro
+000000r 2               .macro xnor addr
+000000r 2                   __instr I_XNOR, addr
+000000r 2               .endmacro
+000000r 2               .macro sto addr
+000000r 2                   __instr I_STO, addr
+000000r 2               .endmacro
+000000r 2               .macro stoc addr
+000000r 2                   __instr I_STOC, addr
+000000r 2               .endmacro
+000000r 2               .macro ien addr
+000000r 2                   __instr I_IEN, addr
+000000r 2               .endmacro
+000000r 2               .macro oen addr
+000000r 2                   __instr I_OEN, addr
+000000r 2               .endmacro
+000000r 2               .macro jmp addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_JMP, 0
+000000r 2               .else
+000000r 2                   __instr I_JMP, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               .macro rtn
+000000r 2                   __instr I_RTN, 0
+000000r 2               .endmacro
+000000r 2               .macro skz
+000000r 2                   __instr I_SKZ, 0
+000000r 2               .endmacro
+000000r 2               .macro nopf addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_NOPF, 0
+000000r 2               .else
+000000r 2                   __instr I_NOPF, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               
+000000r 1               
+000000r 1               .segment "CODE"
+000000r 1                   .org $00
+000000  1               ; init
+000000  1  68               orc  RR             ; $00
+000001  1  A8               ien  RR             ; $01
+000002  1  B8               oen  RR             ; $02
+000003  1               
+000003  1               loop:
+000003  1               ; read button and write to LED
+000003  1  19               ld   IN1            ; $0D
+000004  1  89               sto  OUT1           ; $0E
+000005  1               ; invert button state to LED
+000005  1  2A               ldc  IN2            ; $0F
+000006  1  8A               sto  OUT2           ; $10
+000007  1               ; conditional LED control
+000007  1  1B               ld   IN3            ; $11
+000008  1  E0               skz                 ; $12
+000009  1  8B               sto  OUT3           ; $13
+00000A  1               ; latch an LED state with on - no_toggle routine
+00000A  1  1C               ld   IN4            ; $14
+00000B  1  50               or   MEM0           ; $15
+00000C  1  80               sto  MEM0           ; $16
+00000D  1  8C               sto  OUT4           ; $17
+00000E  1               
+00000E  1  C3               jmp  loop           ; $18
+00000F  1               
+00000F  1               
+00000F  1               
+00000F  1               

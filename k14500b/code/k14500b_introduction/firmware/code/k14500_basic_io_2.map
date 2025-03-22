@@ -1,0 +1,26 @@
+Modules list:
+-------------
+k14500_basic_io_2.o:
+    CODE              Offs=000000  Size=000013  Align=00001  Fill=0000
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+CODE                  000000  000012  000013  00001
+
+
+Exports list by name:
+---------------------
+
+
+
+Exports list by value:
+----------------------
+
+
+
+Imports list:
+-------------
+

@@ -1,0 +1,211 @@
+ca65 V2.19 - Git 16258d8
+Main file   : ..\code\k14500_basic_io_2.s
+Current file: ..\code\k14500_basic_io_2.s
+
+000000r 1               ;
+000000r 1               ; Filename: k14500_basic_io_2.s
+000000r 1               ; Title: Latch an LED State with On/Off
+000000r 1               ; Date: 17/03/2025
+000000r 1               ;
+000000r 1               ; This program demonstrates basic I/O operations for the k14500B.
+000000r 1               ; It includes an example of latching LED states.
+000000r 1               ; The code is designed to run on the RetroShield k14500B platform.
+000000r 1               ;
+000000r 1               ;
+000000r 1               ;### Latch an LED State with On/Off
+000000r 1               ;
+000000r 1               ; ORC  RR           ; Perform OR complement on RR.
+000000r 1               ; (Typically initializes RR to 1 since RR = !(D_IN & IEN))
+000000r 1               ; IEN  RR           ; Load the Input Enable register with RR (sets IEN = 1).
+000000r 1               ; OEN  RR           ; Load the Output Enable register with RR (sets OEN = 1).
+000000r 1               ; ORC  RR           ; Repeat ORC to further stabilize RR.
+000000r 1               ; ANDC RR           ; Perform AND complement on RR (may clear unwanted bits).
+000000r 1               ; STO  MEM0         ; Store the current RR value into memory location 0 (latching LED state).
+000000r 1               ; STO  MEM1         ; Also store RR into MEM1 for later reference.
+000000r 1               ; JMP  loop         ; Jump to the 'loop' label to start the main routine.
+000000r 1               ;
+000000r 1               ; no_toggle:   (Routine to update an alternate output without toggling)
+000000r 1               ; LD   IN4          ; Load the state of input IN4 into RR.
+000000r 1               ; STO  MEM1         ; Store this state into MEM1.
+000000r 1               ; LD   MEM0         ; Load the current latched LED state from MEM0 into RR.
+000000r 1               ; STO  OUT4         ; Update output OUT4 with the state from MEM0.
+000000r 1               ; JMP  loop         ; Jump back to the main loop.
+000000r 1               ;
+000000r 1               ; loop:        (Main routine for monitoring and toggling the LED latch)
+000000r 1               ; LD   IN4           ; Load the state of input IN4 into RR.
+000000r 1               ; SKZ               ; Skip next instruction if RR = 0 (i.e. if IN4 is not pressed).
+000000r 1               ; JMP  no_toggle    ; If IN4 is pressed, branch to the no_toggle routine.
+000000r 1               ; XNOR MEM1         ; Exclusive NOR: Compare RR with MEM1.
+000000r 1               ; (Result: RR becomes 1 if IN4’s current state equals MEM1; used for edge detection)
+000000r 1               ; SKZ               ; Skip next instruction if RR = 0 (no rising edge detected).
+000000r 1               ; JMP  no_toggle    ; If no edge detected, branch to no_toggle.
+000000r 1               ; LD   MEM0         ; Load the current latched LED state from MEM0 into RR.
+000000r 1               ; LDC  MEM0         ; Load the complement of MEM0 into RR (toggle the latched state).
+000000r 1               ; STO  MEM0         ; Store the toggled state back into MEM0.
+000000r 1               ; JMP  no_toggle    ; Jump to no_toggle to update outputs accordingly.
+000000r 1               ;
+000000r 1               ; *Effect: When button IN1 is pressed, its state is combined (ORed) with the latched state
+000000r 1               ;         in MEM0 so that LED OUT1 is turned on and remains on (latched). When button IN5
+000000r 1               ;         is pressed, the latched state is cleared (via an AND complement operation),
+000000r 1               ;         turning LED OUT1 off.
+000000r 1               
+000000r 1               .include "system.inc"
+000000r 2               ;
+000000r 2               ; MC14500 assembler using ca65 macros
+000000r 2               ; Yaroslav Veremenko (c) 2022
+000000r 2               ; Adjusted for MC14500B 4-bit jump limitation ($00-$0F), no runtime checks
+000000r 2               ;
+000000r 2               
+000000r 2               .feature ubiquitous_idents
+000000r 2               .feature string_escapes
+000000r 2               .setcpu "none"
+000000r 2               
+000000r 2               ; Instruction set (unchanged)
+000000r 2               .define I_NOP0 0
+000000r 2               .define I_LD 1
+000000r 2               .define I_LDC 2
+000000r 2               .define I_AND 3
+000000r 2               .define I_ANDC 4
+000000r 2               .define I_OR 5
+000000r 2               .define I_ORC 6
+000000r 2               .define I_XNOR 7
+000000r 2               .define I_STO 8
+000000r 2               .define I_STOC 9
+000000r 2               .define I_IEN 10
+000000r 2               .define I_OEN 11
+000000r 2               .define I_JMP 12
+000000r 2               .define I_RTN 13
+000000r 2               .define I_SKZ 14
+000000r 2               .define I_NOPF 15
+000000r 2               
+000000r 2               ; I/O and memory mapping (unchanged)
+000000r 2               RR = $8
+000000r 2               IN1 = $9
+000000r 2               IN2 = $A
+000000r 2               IN3 = $B
+000000r 2               IN4 = $C
+000000r 2               IN5 = $D
+000000r 2               IN6 = $E
+000000r 2               IN7 = $F
+000000r 2               
+000000r 2               MEM0 = $0
+000000r 2               MEM1 = $1
+000000r 2               MEM2 = $2
+000000r 2               MEM3 = $3
+000000r 2               MEM4 = $4
+000000r 2               MEM5 = $5
+000000r 2               MEM6 = $6
+000000r 2               MEM7 = $7
+000000r 2               
+000000r 2               OUT0 = $8
+000000r 2               OUT1 = $9
+000000r 2               OUT2 = $A
+000000r 2               OUT3 = $B
+000000r 2               OUT4 = $C
+000000r 2               OUT5 = $D
+000000r 2               OUT6 = $E
+000000r 2               OUT7 = $F
+000000r 2               
+000000r 2               .macro __lit_instr op, addr
+000000r 2                   ; MC14500B uses 4-bit address field ($00-$0F) for jmp.
+000000r 2                   ; Addresses beyond $0F are masked to low 4 bits ($00-$0F).
+000000r 2                   ; Ensure targets are within $00-$0F manually, or use multi-step jumps/paging for larger addresses.
+000000r 2                   .byte <(((op) << 4) | ((<(addr)) & $0F))
+000000r 2               .endmacro
+000000r 2               
+000000r 2               .macro __instr op, addr
+000000r 2                   __lit_instr op, addr
+000000r 2               .endmacro
+000000r 2               
+000000r 2               ; Instruction macros (unchanged)
+000000r 2               .macro nop0 addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_NOP0, 0
+000000r 2               .else
+000000r 2                   __instr I_NOP0, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               .macro ld addr
+000000r 2                   __instr I_LD, addr
+000000r 2               .endmacro
+000000r 2               .macro ldc addr
+000000r 2                   __instr I_LDC, addr
+000000r 2               .endmacro
+000000r 2               .macro and addr
+000000r 2                   __instr I_AND, addr
+000000r 2               .endmacro
+000000r 2               .macro andc addr
+000000r 2                   __instr I_ANDC, addr
+000000r 2               .endmacro
+000000r 2               .macro or addr
+000000r 2                   __instr I_OR, addr
+000000r 2               .endmacro
+000000r 2               .macro orc addr
+000000r 2                   __instr I_ORC, addr
+000000r 2               .endmacro
+000000r 2               .macro xnor addr
+000000r 2                   __instr I_XNOR, addr
+000000r 2               .endmacro
+000000r 2               .macro sto addr
+000000r 2                   __instr I_STO, addr
+000000r 2               .endmacro
+000000r 2               .macro stoc addr
+000000r 2                   __instr I_STOC, addr
+000000r 2               .endmacro
+000000r 2               .macro ien addr
+000000r 2                   __instr I_IEN, addr
+000000r 2               .endmacro
+000000r 2               .macro oen addr
+000000r 2                   __instr I_OEN, addr
+000000r 2               .endmacro
+000000r 2               .macro jmp addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_JMP, 0
+000000r 2               .else
+000000r 2                   __instr I_JMP, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               .macro rtn
+000000r 2                   __instr I_RTN, 0
+000000r 2               .endmacro
+000000r 2               .macro skz
+000000r 2                   __instr I_SKZ, 0
+000000r 2               .endmacro
+000000r 2               .macro nopf addr
+000000r 2               .ifblank addr
+000000r 2                   __instr I_NOPF, 0
+000000r 2               .else
+000000r 2                   __instr I_NOPF, addr
+000000r 2               .endif
+000000r 2               .endmacro
+000000r 2               
+000000r 1               
+000000r 1               .segment "CODE"
+000000r 1                   .org $00
+000000  1               
+000000  1  68               orc  RR             ; $00: OR complement RR (initialize RR to 1).
+000001  1  A8               ien  RR             ; $01: Enable input (set IEN = 1).
+000002  1  B8               oen  RR             ; $02: Enable output (set OEN = 1).
+000003  1  C9               jmp  loop           ; $03: Jump to the main loop.
+000004  1               
+000004  1               no_toggle:
+000004  1  1C               ld   IN4            ; $04: Load input IN4 state into RR.
+000005  1  81               sto  MEM1           ; $05: Save input state to MEM1.
+000006  1  10               ld   MEM0           ; $06: Load latched LED state from MEM0 into RR.
+000007  1  8C               sto  OUT4           ; $07: Update OUT4 with latched LED state.
+000008  1  C9               jmp  loop           ; $08: Return to main loop.
+000009  1               
+000009  1               loop:
+000009  1  1C               ld   IN4            ; $09: Load input IN4 state into RR.
+00000A  1  E0               skz                 ; $0A: Skip next instruction if RR = 0 (button not pressed).
+00000B  1  C4               jmp  no_toggle      ; $0B: Jump to no_toggle if button is pressed.
+00000C  1  71               xnor MEM1           ; $0C: Compare RR with MEM1 (detect rising edge).
+00000D  1  E0               skz                 ; $0D: Skip next instruction if no rising edge detected.
+00000E  1  C4               jmp  no_toggle      ; $0E: Jump to no_toggle if no edge detected.
+00000F  1  10               ld   MEM0           ; $0F: Load latched LED state from MEM0 into RR.
+000010  1  20               ldc  MEM0           ; $10: Load complement of MEM0 into RR (toggle state).
+000011  1  80               sto  MEM0           ; $11: Save toggled state back to MEM0.
+000012  1  C4               jmp  no_toggle      ; $12: Jump to no_toggle to update outputs.
+000013  1               
+000013  1               
+000013  1               
