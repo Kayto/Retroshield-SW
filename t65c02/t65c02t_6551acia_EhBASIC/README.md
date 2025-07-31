@@ -24,7 +24,7 @@ This project adapts a 65C02/RetroShield hardware setup to use **EhBASIC** as the
 ### Memory Map Adjusted for EhBASIC
 - **RAM:** `$0000` (including zero page) to `$7EFF`.
 - **ROM:** `$A000` to `$FFFF`.
-  - `basic_bin.h` provides the EhBASIC binary as a C array.
+  - `memorymap.h` provides the EhBASIC binary as a C array.
   - Interrupt vectors at `$FFFA–$FFFF` are part of the ROM image.
 - All ACI PROM references at `$C100–$C1FF` were **removed**.
 
