@@ -51,3 +51,7 @@
 * `k14500_basic_io_1`: Basic I/O Operations for k14500B.
 * `k14500_basic_io_2`: Latch an LED State with On/Off
 
+### t65c02
+* `t65c02t_6551acia_EhBASIC`: Implements 6551 ACIA emulation for EhBASIC i/o.
+
+
