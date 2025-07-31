@@ -1,7 +1,7 @@
 
 ## Overview
 
-This project adapts a 65C02/RetroShield hardware setup to use **EhBASIC** as the resident BASIC interpreter and replaces the original Apple‑1 style 6821 PIA/ACI interface with a **software‑emulated 6551 ACIA** for serial I/O. The result is a compact and functional environment that boots directly into EhBASIC over a USB serial connection.
+This project adapts a 65C02/RetroShield hardware setup to use **EhBASIC** as the resident BASIC interpreter and replaces the original Apple‑1 style 6821 PIA/ACI interface with a **software‑emulated 6551 ACIA** for serial I/O. The result boots directly into EhBASIC with i/o over a USB serial connection.
 
 ---
 
@@ -29,8 +29,8 @@ This project adapts a 65C02/RetroShield hardware setup to use **EhBASIC** as the
 - All ACI PROM references at `$C100–$C1FF` were **removed**.
 
 ### Loading EhBASIC ROM
-- `basic.bin` (8 KB) was converted into a C array (`basic_bin.h`).
-- `cpu_tick()` serves bytes from this ROM whenever the CPU reads in the `$A000–$FFFF` range.
+- `basic.bin` (8 KB) was converted into a C array (`memorymap.h`).
+
 
 ### Simplified Serial Event Handling
 - Removed legacy `serialEvent0()` PIA code.
