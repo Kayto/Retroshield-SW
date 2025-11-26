@@ -1,0 +1,3812 @@
+0000-                 31
+0000-                 32               ; .TARGET "Z80"
+0000-                 33
+0000-                 34               ; Comma separated 0xAA format for arduino code.
+0000-                 35               ; .setting "OutputFileType", "TXT"
+0000-                 36               ; .setting "OutputTxtAddressFormatFirst", "#### 0x{0:X02} ####\n"
+0000-                 37               ; .setting "OutputTxtAddressFormatNext", " "
+0000-                 38               ; .setting "OutputTxtValueFormat", "0x{0:X02}"
+0000-                 39               ; .setting "OutputTxtValueSeparator", ","
+0000-                 40               ; .setting "OutputTxtLineSeparator", ",\n"
+0000-                 41
+0000-                 42
+0000-                 43       ;VERSION HISTORY
+0000-                 44
+0000-                 45       ;AFTER DDCB COMMANDS EXCLUDED
+0000-                 46       ;FILL ADDED, DISASSEMBLER NOTFOUNT RESULT IMPROVED
+0000-                 47       ;ASSEMBLER HAVE LIMITED BACKSPACE
+0000-                 48       ;HEX INPUT IMPROVED
+0000-                 49
+0000-                 50
+0000-                 51       ;INTLIN1 TURNED INTO SUBROUTINE
+0000-                 52       ;S-AVE, L-OAD, E-DIT,R-UN,M-OVE COMMANDS ADDED
+0000-                 53       ;EFEX INLINE ASSEMBLER V.087 - 06.APR.2017
+0000-                 54
+0000-                 55       ;SYSTEM VARIABLES:
+0000-                 56       ;3F60-3F6F  :COMMAND INPUT BUFFER                       ;COMINBUF
+0000-                 57       ;3FA0-3FA1  :COMMAND LINE LENGHT TO BE TRANSLATED       ;LINELENGHT
+0000-                 58       ;3F80-3F90  :CODE BUFFER-----                           ;CODEBUF
+0000-                 59       ;3FA2-3FA3  :MNEMONIC TABLE FFINDED INDEX ADRESS        ;TABFINDAD
+0000-                 60       ;3FA4-3FA5  :ASSEMBLY ADRESS                            ;ASADR
+0000-                 61       ;3FA6-3FA7  :ASSEMBLY ADRES + CODES TO WRITE MEMORY     ;ASADCODE
+0000-                 62       ;3FB0       :OPERAND BYTE COUNT                         ;OPBYTECNT
+0000-                 63       ;3FB2       : # OR $ OR NULL                            ;DIYEZDOLAR
+0000-                 64       ;3F42       :# CONTENT (DATA)                           ;DATAINP
+0000-                 65       ;3F43-3F44  :$ CONTENT (ADRESS)                         ;ADRSINP
+0000-                 66       ;3FB3-3FB4  :CODE BUF. LENGHT                           ;CODEBUFLEN
+0000-                 67       ;
+0000-                 68       ;
+0000-                 69       ;ASSEMBLER VARIABLES FOR ROM:
+FF60-                 70       COMINBUF         .EQ $FF60    ;10H CHAR LENGHT
+FF80-                 71       CODEBUF          .EQ $FF80      ;10H CHAR LENGHT
+FFA0-                 72       LINELENGHT       .EQ $FFA0      ;2 BYTE
+FFA2-                 73       TABFINDAD        .EQ $FFA2      ;2 BYTE
+FFA4-                 74       ASADR            .EQ $FFA4              ;2 BYTE
+FFA6-                 75       ASADCODE         .EQ $FFA6      ;2 BYTE
+FFB0-                 76       OPBYTECNT        .EQ $FFB0      ;1 BYTE
+FFB2-                 77       DIYEZDOLAR       .EQ $FFB2      ;1 BYTE
+FF42-                 78       DATAINP          .EQ $FF42      ;1 BYTE
+FF43-                 79       ADRSINP          .EQ $FF43      ;2 BYTE
+FFB3-                 80       CODEBUFLEN       .EQ $FFB3      ;2 BYTE
+0000-                 81
+FF20-                 82       KEYINBUF         .EQ $FF20      ;4 BYTE
+FF40-                 83       KEYINRES         .EQ $FF40      ;4 BYTE
+0000-                 84
+0000-                 85       ;HEX RECORD VARIABLES FOR ROM
+FF4B-                 86       HEXLDREG         .EQ $FF4B      ;2 BYTE
+FF50-                 87       LOADSTADR        .EQ $FF50      ;2 BYTE
+FF34-                 88       SAVECHCK         .EQ $FF34      ;2 BYTE
+FF32-                 89       LOWNIBBLE        .EQ $FF32      ;1 BYTE
+FF33-                 90       HIGHNIBBLE       .EQ $FF33      ;1 BYTE
+0000-                 91       ;EDIT ADRESS
+F906-                 92       EDITADR          .EQ $F906
+0000-                 93       ;INTERRUPT (IM1, 0038) ADRESS POINTER
+F908-                 94       INTADRS          .EQ $F908  ;INT ADRESS POINTER
+0000-                 95       ;INTADRES +2: 090A : NMI POINTER
+0000-                 96       ;STACK POINTER;
+F7FD-                 97       STACKPOINT       .EQ $F7FD      ;2 BYTE ; UNCOMMENT THIS TO RUN IN ROM
+0000-                 98
+0000-                 99
+0000-                100
+0000-                101       ;-------------------------------------------------
+0000-                102       ;4 mhz clock,1834 uart clock (DIVIDE BY 16),  8k rom, 8k ram
+0000-                103       ;PORT 00:UART data, port 01 control/status
+0000-                104       ;PORT 08:8255    08 input,  09 and 0A output
+0000-                105       ;
+0000-                106                       .org $0000    ;CHANGE 0000 RO RUN IN ROM!
+0000-                107
+0000-31 FD F7        108 ( 10)                 LD SP,STACKPOINT  ; STACK AT THE END OF  RAM
+0003-21 72 00        109 ( 10)                 LD HL,MA_IN       ;DEFAULT INTERUPT ROUTINE IS MA_IN PROGRAM
+0006-22 08 F9        110 ( 20)                 LD (INTADRS),HL
+0009-ED 56           111 (  8)                 IM 1
+000B-FB              112 (  4)                 EI
+000C-                113                       ;DI             ;DEFAULT: INTERRUPTS DISABLED
+000C-                114
+000C-                115
+000C-                116       ;               JP GREET       ; TURN TO COMMENT TO RUN IN ROM
+000C-                117
+000C-                118
+000C-                119       ;----------------INIT-8251----------------------------------
+000C-                120
+000C-                121
+000C-                122       INIT8255:
+000C-3E 90           123 (  7)                 LD A,$90
+000E-D3 0B           124 ( 11)                 OUT ($0B),A
+0010-                125       INIT8251:
+0010-                126
+0010-                127                       ; LD A,$40
+0010-                128                       ; OUT ($01),A
+0010-                129                       ; NOP
+0010-                130                       ; NOP
+0010-                131                       ; LD A,$40
+0010-                132                       ; OUT ($01),A
+0010-                133                       ; NOP
+0010-                134                       ; NOP
+0010-                135
+0010-                136                       ; LD A,$40
+0010-                137                       ; OUT ($01),A  ; WORST CASE INIT
+0010-                138                       ; NOP
+0010-                139                       ; NOP
+0010-                140
+0010-                141
+0010-                142
+0010-                143                       ; LD A,$40
+0010-                144                       ; OUT ($01),A           ; RESET 8251
+0010-                145                       ; NOP
+0010-                146                       ; NOP
+0010-                147
+0010-3E 4D           148 (  7)                 LD A,$4D            ; ERTURK changed from 4E to 4D
+0012-D3 01           149 ( 11)                 OUT ($01),A              ; 8-N-1  CLK/1  4EH FOR /16, 4D FOR /1  (MODE )
+0014-00              150 (  4)                 NOP
+0015-00              151 (  4)                 NOP
+0016-3E 37           152 (  7)                 LD A,$37
+0018-D3 01           153 ( 11)                 OUT ($01),A              ; RESET ALL ERROR FLAGS AND ENABLE RXRDY,TXRDY (COMMAND)
+001A-                154
+001A-C3 6A 00        155 ( 10)                 JP GREET
+001D-                156       ;-----------------------------------------------------------------------------------
+001D-                157       ;   UNCOMMENT THIS TO RUN IN ROM
+001D-                158
+001D-                159                       ; ERTURK
+001D-                160                       ; .storage $0038-*,$00  ; zero until interrupt
+001D-                161
+0038                162                       .NO $0038,$00               ;CHANGEABLE INTERRUPT SUBROUTINE
+0038-2A 08 F9        163 ( 16)                 LD HL,(INTADRS)
+003B-E9              164 (  4)                 JP (HL)
+003C-                165
+003C-                166       ;-------------------------------------------------------------------------------------
+003C-                167
+003C-                168       ;TXD ROUTINE sends contents of A REGISTER  to serial out pin
+003C-                169       ;19200 BAUD, 8-N-1
+003C-                170
+003C-                171
+003C-F5              172 ( 11) TXD:    PUSH AF
+003D-DB 01           173 ( 11) LOPTX:  IN A,($01)
+003F-E6 01           174 (  7)                 AND $01     ;TXRDY?
+0041-CA 3D 00        175 ( 10)                 JP Z,LOPTX
+0044-F1              176 ( 10)                 POP AF
+0045-D3 00           177 ( 11)                 OUT ($00),A
+0047-C9              178 ( 10)                 RET
+0048-                179
+0048-                180       ;----------------------------------------------------------------------------------
+0048-                181       ;RXD ROUTINE receives 1 bayt from serial  to A REGISTER
+0048-                182       ;19200 BAUD, 8-N-1
+0048-                183
+0048-                184       RXD:
+0048-3E 37           185 (  7)                 LD A,$37
+004A-D3 01           186 ( 11)                 OUT ($01),A ;ENABLE TX AND RX AND CLEAR ERR BITS
+004C-                187
+004C-DB 01           188 ( 11) LOPTR:  IN A,($01)
+004E-E6 02           189 (  7)                 AND $02     ;TXRDY?
+0050-CA 4C 00        190 ( 10)                 JP Z,LOPTR
+0053-DB 00           191 ( 11)                 IN A,($00)   ;RECEIVE CHAR
+0055-C9              192 ( 10)                 RET
+0056-                193
+0056-                194
+0056-                195       ;-----------------------------------------------------------------------------------
+0056-                196       ;   UNCOMMENT THIS TO RUN IN ROM
+0056-                197
+0056-                198                       ; ERTURK
+0056-                199                       ; .storage $0066-*,$00  ; zero until interrupt
+0056-                200
+0066                201                       .NO $0066,$00               ;CHANGEABLE NMI INTERRUPT SUBROUTINE
+0066-2A 0A F9        202 ( 16)                 LD HL,(INTADRS+2)
+0069-E9              203 (  4)                 JP (HL)
+006A-                204
+006A-                205       ;-------------------------------------------------------------------------------------
+006A-                206
+006A-                207
+006A-                208
+006A-                209
+006A-                210       ;----------------GREETING MESSAGE----------------------
+006A-                211
+006A-                212
+006A-                213       GREET:
+006A-                214                                ;GREETING  MSG
+006A-21 89 0A        215 ( 10)                 LD HL,TABLE
+006D-06 39           216 (  7)                 LD B,57   ; DECIMAL IF NOT H AT THE END
+006F-CD BA 01        217 ( 17)                 CALL PRINT
+0072-                218
+0072-                219
+0072-                220       ;------------------------MAIN PROGRAM---------------------
+0072-                221
+0072-CD C1 00        222 ( 17) MA_IN   CALL PROMPT
+0075-CD 48 00        223 ( 17)                 CALL RXD
+0078-FE 53           224 (  7)                 CP 'S'
+007A-CC 9E 07        225 (10+)                 CALL Z,SAVEX            ;SAVE IHEX FILE
+007D-FE 4C           226 (  7)                 CP 'L'
+007F-CA 32 09        227 ( 10)                 JP Z,LOADERZ            ;LOAD IHEX FILE
+0082-FE 41           228 (  7)                 CP 'A'
+0084-CA 4B 02        229 ( 10)                 JP Z,ASSEMBLE           ;ASSEMBLER
+0087-FE 47           230 (  7)                 CP 'G'
+0089-CA E7 08        231 ( 10)                 JP Z,RUN_ADR            ;GO TO ADRESS
+008C-FE 45           232 (  7)                 CP 'E'
+008E-CA 70 08        233 ( 10)                 JP Z,EDIT               ;EDIT ADRESS
+0091-FE 4D           234 (  7)                 CP 'M'
+0093-CA 72 06        235 ( 10)                 JP Z,MOVE               ;MOVE MEMORY BLOCKS
+0096-FE 48           236 (  7)                 CP 'H'
+0098-CA CA 00        237 ( 10)                 JP Z,HELP               ;HELP SUBROUTINE
+009B-FE 57           238 (  7)                 CP 'W'
+009D-CA 6A 00        239 ( 10)                 JP Z,GREET              ;RESTART
+00A0-FE 55           240 (  7)                 CP 'U'
+00A2-CA DD 00        241 ( 10)                 JP Z,USEFUL             ;USEFUL ROUTINES
+00A5-FE 44           242 (  7)                 CP 'D'
+00A7-CA 51 04        243 ( 10)                 JP Z,DISASSEMBLER
+00AA-FE 46           244 (  7)                 CP 'F'
+00AC-CA 06 07        245 ( 10)                 JP Z,FILL
+00AF-FE 58           246 (  7)                 CP 'X'
+00B1-CA C2 01        247 ( 10)                 JP Z,HEXDUMP            ;DUMP MEMORY CONTENT
+00B4-                248
+00B4-3E 0A           249 (  7)                 LD A, $0A
+00B6-CD 3C 00        250 ( 17)                 CALL TXD
+00B9-3E 0D           251 (  7)                 LD A, $0D
+00BB-CD 3C 00        252 ( 17)                 CALL TXD
+00BE-C3 72 00        253 ( 10)                 JP MA_IN                ;MAIN LOOP OF MONITOR PROGRAM
+00C1-                254
+00C1-21 FC 0A        255 ( 10) PROMPT: LD HL,TABLE6
+00C4-06 06           256 (  7)                 LD B,6   ; DECIMAL IF NOT H AT THE END
+00C6-CD BA 01        257 ( 17)                 CALL PRINT
+00C9-C9              258 ( 10)                 RET
+00CA-                259
+00CA-                260
+00CA-                261
+00CA-                262
+00CA-                263       ;----------------HELP-------------------------
+00CA-                264       HELP:                ;HELP MSG
+00CA-21 01 0B        265 ( 10)                 LD HL,TABLE21
+00CD-01 6E 00        266 ( 10)                 LD BC,110   ; DECIMAL IF NOT H AT THE END
+00D0-7E              267 (  7) DIS21:  LD A,(HL)
+00D1-CD 3C 00        268 ( 17)                 CALL TXD
+00D4-23              269 (  6)                 INC HL
+00D5-0B              270 (  6)                 DEC BC
+00D6-78              271 (  4)                 LD A,B
+00D7-B1              272 (  4)                 OR C
+00D8-20 F6           273 ( 7+)                 JR NZ,DIS21
+00DA-                274
+00DA-                275
+00DA-C3 72 00        276 ( 10)                 JP MA_IN
+00DD-                277
+00DD-                278
+00DD-                279
+00DD-                280       ;-------------------USEFUL ROUTINES-----------
+00DD-                281       USEFUL:              ;HELP MSG
+00DD-                282
+00DD-                283
+00DD-3E 0A           284 (  7)                 LD A,$0A
+00DF-CD 3C 00        285 ( 17)                 CALL TXD
+00E2-3E 0D           286 (  7)                 LD A,$0D
+00E4-CD 3C 00        287 ( 17)                 CALL TXD
+00E7-                288
+00E7-                289
+00E7-                290                       ; LD HL,TABLEH9
+00E7-                291                       ; LD B,23
+00E7-                292                       ; CALL PRINT
+00E7-                293
+00E7-                294
+00E7-21 E8 0B        295 ( 10)                 LD HL,TABLE22
+00EA-06 0E           296 (  7)                 LD B,14
+00EC-CD BA 01        297 ( 17)                 CALL PRINT
+00EF-                298
+00EF-                299
+00EF-                300
+00EF-                301
+00EF-                302
+00EF-21 3C 00        303 ( 10) HELP1:  LD HL,TXD
+00F2-7C              304 (  4)                 LD A,H
+00F3-CD 37 0A        305 ( 17)                 CALL HEXOUT
+00F6-7D              306 (  4)                 LD A,L
+00F7-CD 37 0A        307 ( 17)                 CALL HEXOUT
+00FA-                308
+00FA-3E 0A           309 (  7)                 LD A,$0A
+00FC-CD 3C 00        310 ( 17)                 CALL TXD
+00FF-3E 0D           311 (  7)                 LD A,$0D
+0101-CD 3C 00        312 ( 17)                 CALL TXD
+0104-                313
+0104-                314
+0104-                315
+0104-21 DA 0B        316 ( 10)                 LD HL,TABLEH1
+0107-06 0E           317 (  7)                 LD B,14
+0109-CD BA 01        318 ( 17)                 CALL PRINT
+010C-                319
+010C-                320
+010C-                321
+010C-21 48 00        322 ( 10)                 LD HL,RXD
+010F-7C              323 (  4)                 LD A,H
+0110-CD 37 0A        324 ( 17)                 CALL HEXOUT
+0113-7D              325 (  4)                 LD A,L
+0114-CD 37 0A        326 ( 17)                 CALL HEXOUT
+0117-                327
+0117-3E 0A           328 (  7)                 LD A,$0A
+0119-CD 3C 00        329 ( 17)                 CALL TXD
+011C-3E 0D           330 (  7)                 LD A,$0D
+011E-CD 3C 00        331 ( 17)                 CALL TXD
+0121-                332
+0121-21 CC 0B        333 ( 10)                 LD HL,TABLEH2
+0124-06 0E           334 (  7)                 LD B,14
+0126-                335
+0126-CD BA 01        336 ( 17)                 CALL PRINT
+0129-                337
+0129-                338
+0129-21 E8 07        339 ( 10)                 LD HL,BYTEIN2
+012C-7C              340 (  4)                 LD A,H
+012D-CD 37 0A        341 ( 17)                 CALL HEXOUT
+0130-7D              342 (  4)                 LD A,L
+0131-CD 37 0A        343 ( 17)                 CALL HEXOUT
+0134-                344
+0134-21 BD 0B        345 ( 10)                 LD HL,TABLEH3
+0137-06 0F           346 (  7)                 LD B,15
+0139-CD BA 01        347 ( 17)                 CALL PRINT
+013C-                348
+013C-21 AF 0B        349 ( 10)                 LD HL,TABLEH4
+013F-06 0E           350 (  7)                 LD B,14
+0141-CD BA 01        351 ( 17)                 CALL PRINT
+0144-                352
+0144-21 11 08        353 ( 10)                 LD HL,BYTEIN1
+0147-7C              354 (  4)                 LD A,H
+0148-CD 37 0A        355 ( 17)                 CALL HEXOUT
+014B-7D              356 (  4)                 LD A,L
+014C-CD 37 0A        357 ( 17)                 CALL HEXOUT
+014F-                358
+014F-21 A5 0B        359 ( 10)                 LD HL,TABLEH5
+0152-06 0A           360 (  7)                 LD B,10
+0154-CD BA 01        361 ( 17)                 CALL PRINT
+0157-                362
+0157-21 97 0B        363 ( 10)                 LD HL,TABLEH6
+015A-06 0E           364 (  7)                 LD B,14
+015C-CD BA 01        365 ( 17)                 CALL PRINT
+015F-                366
+015F-21 37 0A        367 ( 10)                 LD HL,HEXOUT
+0162-7C              368 (  4)                 LD A,H
+0163-CD 37 0A        369 ( 17)                 CALL HEXOUT
+0166-7D              370 (  4)                 LD A,L
+0167-CD 37 0A        371 ( 17)                 CALL HEXOUT
+016A-                372
+016A-21 8B 0B        373 ( 10)                 LD HL,TABLEH7
+016D-06 0C           374 (  7)                 LD B,12
+016F-CD BA 01        375 ( 17)                 CALL PRINT
+0172-                376
+0172-21 7D 0B        377 ( 10)                 LD HL,TABLEH8
+0175-06 0E           378 (  7)                 LD B,14
+0177-CD BA 01        379 ( 17)                 CALL PRINT
+017A-                380
+017A-21 72 00        381 ( 10)                 LD HL,MA_IN
+017D-7C              382 (  4)                 LD A,H
+017E-CD 37 0A        383 ( 17)                 CALL HEXOUT
+0181-7D              384 (  4)                 LD A,L
+0182-CD 37 0A        385 ( 17)                 CALL HEXOUT
+0185-                386
+0185-3E 0A           387 (  7)                 LD A,$0A
+0187-CD 3C 00        388 ( 17)                 CALL TXD
+018A-3E 0D           389 (  7)                 LD A,$0D
+018C-CD 3C 00        390 ( 17)                 CALL TXD
+018F-                391
+018F-                392
+018F-                393
+018F-21 6F 0B        394 ( 10)                 LD HL,TABLEH10
+0192-06 0E           395 (  7)                 LD B,14
+0194-CD BA 01        396 ( 17)                 CALL PRINT
+0197-                397
+0197-21 AF 01        398 ( 10)                 LD HL,DE_LAY
+019A-7C              399 (  4)                 LD A,H
+019B-CD 37 0A        400 ( 17)                 CALL HEXOUT
+019E-7D              401 (  4)                 LD A,L
+019F-CD 37 0A        402 ( 17)                 CALL HEXOUT
+01A2-                403
+01A2-3E 0A           404 (  7)                 LD A,$0A
+01A4-CD 3C 00        405 ( 17)                 CALL TXD
+01A7-3E 0D           406 (  7)                 LD A,$0D
+01A9-CD 3C 00        407 ( 17)                 CALL TXD
+01AC-                408
+01AC-                409
+01AC-C3 72 00        410 ( 10)                 JP MA_IN
+01AF-                411
+01AF-                412
+01AF-                413       ;--------------DELAY 500MS---------------
+01AF-                414       DE_LAY:
+01AF-D5              415 ( 11)                 PUSH DE
+01B0-11 00 80        416 ( 10)                 LD DE,$8000
+01B3-                417       DISDELAY:
+01B3-1B              418 (  6)                 DEC DE
+01B4-7A              419 (  4)                 LD A,D
+01B5-B3              420 (  4)                 OR E
+01B6-20 FB           421 ( 7+)                 JR NZ,DISDELAY
+01B8-D1              422 ( 10)                 POP DE
+01B9-C9              423 ( 10)                 RET
+01BA-                424       ;--------------------------------------
+01BA-                425
+01BA-                426       ;---------PRINT SUBROUTINE-------------
+01BA-                427
+01BA-                428
+01BA-7E              429 (  7) PRINT:  LD A,(HL)
+01BB-CD 3C 00        430 ( 17)                 CALL TXD
+01BE-23              431 (  6)                 INC HL
+01BF-10 F9           432 ( 8+)                 DJNZ PRINT
+01C1-C9              433 ( 10)                 RET
+01C2-                434       ;--------------------------------------
+01C2-                435
+01C2-                436
+01C2-                437
+01C2-                438       ;-------------HEXDUMP--------------------------
+01C2-                439       ;HEXDUMP OF INPUTTED MEMORY- +FFH
+01C2-                440
+01C2-                441       HEXDUMP:
+01C2-3E 58           442 (  7)                 LD A,'X'
+01C4-CD 3C 00        443 ( 17)                 CALL TXD
+01C7-3E 2D           444 (  7)                 LD A,'-'
+01C9-CD 3C 00        445 ( 17)                 CALL TXD
+01CC-3E 24           446 (  7)                 LD A, '$'
+01CE-CD 3C 00        447 ( 17)                 CALL TXD
+01D1-3E 3F           448 (  7)                 LD A, '?'
+01D3-CD 3C 00        449 ( 17)                 CALL TXD
+01D6-3E 08           450 (  7)                 LD A, $08
+01D8-CD 3C 00        451 ( 17)                 CALL TXD ; DISPLAY 4 CHAR INPUT PROMPT
+01DB-                452
+01DB-                453
+01DB-                454
+01DB-                455       ;       LD HL, KEYINBUF
+01DB-                456       ;               LD B,4
+01DB-                457       ;DISX1: CALL RXD
+01DB-                458       ;               CP $1B
+01DB-                459       ;               JP Z,MA_IN
+01DB-                460       ;               LD (HL), A
+01DB-                461       ;               INC HL
+01DB-                462       ;               CALL TXD
+01DB-                463       ;               DJNZ DISX1      ;INPUT 4 CHAR
+01DB-                464       ;               CALL INTLINR    ;EXTRACT ADRESS
+01DB-                465
+01DB-CD E8 07        466 ( 17)                 CALL BYTEIN2    ;4 CHAR INPUT, RESULT IN (ADRSINP)
+01DE-                467
+01DE-                468
+01DE-2A 43 FF        469 ( 16)                 LD HL,(ADRSINP)
+01E1-11 0F 00        470 ( 10) DONGUY: LD DE,$000F             ;SHOW 16 LINES
+01E4-                471       DONGUX:
+01E4-3E 0D           472 (  7)                 LD A,$0D                ;ENTER
+01E6-CD 3C 00        473 ( 17)                 CALL TXD
+01E9-3E 0A           474 (  7)                 LD A,$0A
+01EB-CD 3C 00        475 ( 17)                 CALL TXD
+01EE-                476
+01EE-7C              477 (  4)                 LD A,H                  ;PRINT ADRESS AND :
+01EF-CD 37 0A        478 ( 17)                 CALL HEXOUT
+01F2-7D              479 (  4)                 LD A,L
+01F3-CD 37 0A        480 ( 17)                 CALL HEXOUT
+01F6-3E 3A           481 (  7)                 LD A,':'
+01F8-CD 3C 00        482 ( 17)                 CALL TXD
+01FB-3E 20           483 (  7)                 LD A,' '
+01FD-CD 3C 00        484 ( 17)                 CALL TXD
+0200-3E 20           485 (  7)                 LD A,' '
+0202-CD 3C 00        486 ( 17)                 CALL TXD
+0205-                487
+0205-06 08           488 (  7)                 LD B,8          ;FIRST 8 BYTE
+0207-7E              489 (  7) DUMBP:  LD A,(HL)
+0208-CD 37 0A        490 ( 17)                 CALL HEXOUT
+020B-3E 20           491 (  7)                 LD A,' '
+020D-CD 3C 00        492 ( 17)                 CALL TXD
+0210-23              493 (  6)                 INC HL
+0211-10 F4           494 ( 8+)                 DJNZ DUMBP
+0213-                495
+0213-3E 20           496 (  7)                 LD A,' '
+0215-CD 3C 00        497 ( 17)                 CALL TXD
+0218-3E 20           498 (  7)                 LD A,' '
+021A-CD 3C 00        499 ( 17)                 CALL TXD
+021D-3E 20           500 (  7)                 LD A,' '
+021F-CD 3C 00        501 ( 17)                 CALL TXD
+0222-                502
+0222-06 08           503 (  7)                 LD B,8          ;SECOND 8 BYTE
+0224-7E              504 (  7) DUMBP2: LD A,(HL)
+0225-CD 37 0A        505 ( 17)                 CALL HEXOUT
+0228-3E 20           506 (  7)                 LD A,' '
+022A-CD 3C 00        507 ( 17)                 CALL TXD
+022D-23              508 (  6)                 INC HL
+022E-10 F4           509 ( 8+)                 DJNZ DUMBP2
+0230-                510
+0230-1B              511 (  6)                 DEC DE
+0231-7A              512 (  4)                 LD A,D
+0232-B3              513 (  4)                 OR E
+0233-C2 E4 01        514 ( 10)                 JP NZ,DONGUX
+0236-                515
+0236-CD 48 00        516 ( 17) CIKIS:  CALL RXD
+0239-FE 1B           517 (  7)                 CP $1B
+023B-CA 72 00        518 ( 10)                 JP Z,MA_IN              ;ESC : EXIT TO MAIN MENU
+023E-FE 0D           519 (  7)                 CP $0D
+0240-CA E1 01        520 ( 10)                 JP Z,DONGUY             ;ENTER OR SPACE CONT. TO LISTING
+0243-FE 20           521 (  7)                 CP $20
+0245-CA E1 01        522 ( 10)                 JP Z,DONGUY
+0248-C3 36 02        523 ( 10)                 JP CIKIS
+024B-                524
+024B-                525
+024B-                526
+024B-                527       ;---------------efex-ASSEMBLER---v0.87beta-STARTS HERE---------------
+024B-                528       ;                                                                    |
+024B-                529       ;                      A  S  S  E  M  B  L  E  R                     |
+024B-                530       ;                                                                    |
+024B-                531       ;                       BACKSPACE WORKS IN TEXT                      |
+024B-                532       ;                     NO BACKSPACE AFTER # OR $                      |
+024B-                533       ;                         SYNTAX CHECK ADDED                         |
+024B-                534       ;                                                                    |
+024B-                535       ;--------------------------------------------------------------------
+024B-                536       ;INPUT ASSEMBLER ADRESS-------
+024B-                537
+024B-                538       ASSEMBLE:
+024B-3E 00           539 (  7)                 LD A,0
+024D-32 B0 FF        540 ( 13)                 LD (OPBYTECNT),A        ;OPERAND BYTE COUNT RESET
+0250-3E 00           541 (  7)                 LD A,0
+0252-32 B2 FF        542 ( 13)                 LD (DIYEZDOLAR),A       ;#,$,NULL RESET AS NULL
+0255-                543
+0255-                544       ASS_ADR:
+0255-3E 41           545 (  7)                 LD A,'A'       ;ASSEMBLY START ADRESS
+0257-CD 3C 00        546 ( 17)                 CALL TXD
+025A-3E 2D           547 (  7)                 LD A,'-'
+025C-CD 3C 00        548 ( 17)                 CALL TXD
+025F-3E 24           549 (  7)                 LD A, '$'
+0261-CD 3C 00        550 ( 17)                 CALL TXD
+0264-3E 3F           551 (  7)                 LD A, '?'
+0266-CD 3C 00        552 ( 17)                 CALL TXD
+0269-3E 08           553 (  7)                 LD A, $08
+026B-CD 3C 00        554 ( 17)                 CALL TXD ; DISPLAY 4 CHAR INPUT PROMPT
+026E-                555
+026E-CD E8 07        556 ( 17)                 CALL BYTEIN2
+0271-                557
+0271-2A 43 FF        558 ( 16)                 LD HL, (ADRSINP)
+0274-22 A4 FF        559 ( 20)                 LD (ASADR),HL
+0277-                560
+0277-                561
+0277-21 D3 03        562 ( 10)                 LD HL,TABLE_AS ;ASSEMBLER MESSAGE
+027A-06 0E           563 (  7)                 LD B,14
+027C-CD BA 01        564 ( 17)                 CALL PRINT
+027F-                565
+027F-                566
+027F-3E 0D           567 (  7)                 LD A, $0D
+0281-CD 3C 00        568 ( 17)                 CALL TXD
+0284-3E 0A           569 (  7)                 LD A, $0A
+0286-CD 3C 00        570 ( 17)                 CALL TXD
+0289-                571
+0289-                572
+0289-                573       ;---------------main assembler loop start here------------
+0289-                574
+0289-3E 0A           575 (  7) AS_DON: LD A, $0A
+028B-CD 3C 00        576 ( 17)                 CALL TXD
+028E-                577       AS_DON2:
+028E-3E 0D           578 (  7)                 LD A, $0D
+0290-CD 3C 00        579 ( 17)                 CALL TXD
+0293-                580
+0293-2A A4 FF        581 ( 16)                 LD HL,(ASADR)   ;ASSEMBLY ADRESS
+0296-7C              582 (  4)                 LD A,H
+0297-CD 37 0A        583 ( 17)                 CALL HEXOUT
+029A-7D              584 (  4)                 LD A,L
+029B-CD 37 0A        585 ( 17)                 CALL HEXOUT
+029E-                586
+029E-3E 20           587 (  7)                 LD A, ' '
+02A0-CD 3C 00        588 ( 17)                 CALL TXD
+02A3-3E 20           589 (  7)                 LD A, ' '
+02A5-CD 3C 00        590 ( 17)                 CALL TXD
+02A8-                591
+02A8-                592
+02A8-                593
+02A8-                594
+02A8-                595
+02A8-01 01 00        596 ( 10)                 LD BC,$0001
+02AB-ED 43 A0 FF     597 ( 20)                 LD (LINELENGHT),BC      ;CLEAR LENGHT REG
+02AF-                598
+02AF-CD A8 03        599 ( 17)                 CALL CLRBUF         ;CLEAR INPUT BUFFERS
+02B2-21 60 FF        600 ( 10)                 LD HL,COMINBUF
+02B5-06 0F           601 (  7)                 LD B,$0F
+02B7-CD 48 00        602 ( 17) DIS32:  CALL RXD
+02BA-FE 0D           603 (  7)                 CP $0D
+02BC-CA EE 02        604 ( 10)                 JP Z,BITTI         ;ENTER BASILDIYSA BITIR
+02BF-FE 1B           605 (  7)                 CP $1B
+02C1-CA 72 00        606 ( 10)                 JP Z,MA_IN         ;ESC BASILDIYSA CIK
+02C4-FE 08           607 (  7)                 CP $08
+02C6-CA DA 02        608 ( 10)                 JP Z,HATALI
+02C9-                609
+02C9-                610
+02C9-CD 3C 00        611 ( 17)                 CALL TXD         ;PRINT CHAR
+02CC-                612
+02CC-FE 23           613 (  7)                 CP '#'
+02CE-CC 9A 03        614 (10+)                 CALL Z,BYTEINP1
+02D1-FE 24           615 (  7)                 CP '$'
+02D3-CC A1 03        616 (10+)                 CALL Z,BYTEINP2
+02D6-77              617 (  7)                 LD (HL),A
+02D7-23              618 (  6)                 INC HL
+02D8-10 DD           619 ( 8+)                 DJNZ DIS32  ;GET COMMAND TO BUFFER 16 CHAR  LENGHT, TILL CR
+02DA-                620
+02DA-                621
+02DA-3E 08           622 (  7) HATALI: LD A,$08
+02DC-CD 3C 00        623 ( 17)                 CALL TXD
+02DF-3E 20           624 (  7)                 LD A,' '
+02E1-CD 3C 00        625 ( 17)                 CALL TXD
+02E4-3E 08           626 (  7)                 LD A,$08
+02E6-CD 3C 00        627 ( 17)                 CALL TXD
+02E9-2B              628 (  6)                 DEC HL
+02EA-04              629 (  4)                 INC B
+02EB-C3 B7 02        630 ( 10)                 JP DIS32
+02EE-                631
+02EE-                632       ;       ---------------------------
+02EE-3E 0F           633 (  7) BITTI:  LD A,$0F
+02F0-90              634 (  4)                 SUB B
+02F1-32 A0 FF        635 ( 13)                 LD (LINELENGHT), A      ;SAVE INPUT REGISTER LENGHT TO BC
+02F4-                636                                                                       ;TO LINELENGHT-3FA1 AND EXIT FROM INPUT
+02F4-                637                                                                       ;ALL CODE TAKEN INTO INPUT REG., LENGHT IN LINELENGHT-3FA1H
+02F4-3E 00           638 (  7)                 LD A,$00
+02F6-32 A1 FF        639 ( 13)                 LD (LINELENGHT+1), A
+02F9-                640
+02F9-                641
+02F9-C3 FC 02        642 ( 10)                 JP INTERPRET    ;JUMP TO INTERPRETER
+02FC-                643
+02FC-                644
+02FC-                645
+02FC-                646       ;--------LINE INPUT FINISHED HERE-----
+02FC-                647       ;------------------------------------------------------------------------
+02FC-                648       ;                                                                           |
+02FC-                649       ;       RESULT: Mnemonic string in COMINBUF (INPUT BUFFER)                      |
+02FC-                650       ;           Mnemonic lenght in LINELENGHT  (for use Register BC)            |
+02FC-                651       ;           if operand=$: result in ADRSINP-FF43H FF44h                     |
+02FC-                652       ;               if operand=#: result in DATAINP-FF42                            |
+02FC-                653       ;                                                                                   |
+02FC-                654       ;-------------------------------------------------------------------------
+02FC-                655
+02FC-                656
+02FC-                657       ;---------------INTERPRETER STARTS HERE--------------------------
+02FC-                658       ;Interpreter translates input buffer mnemonics to machine code
+02FC-                659       ;
+02FC-                660       ;            SYSTEM VARIABLES OF INTERPRETER
+02FC-                661       ;
+02FC-                662       ;
+02FC-                663       ;FF60-FF6F  :COMMAND INPUT BUFFER
+02FC-                664       ;FFA0-FFA1  :COMMAND LINE LENGHT TO BE TRANSLATED
+02FC-                665       ;FF80-FF90  :CODE BUFFER----
+02FC-                666       ;FFA2-FFA3  :MNEMONIC TABLE FFINDED INDEX ADRESS
+02FC-                667       ;FFA4-FFA5  :ASSEMBLY ADRESS
+02FC-                668       ;FFA6-FFA7  :ASSEMBLY ADRES + CODES TO WRITE MEMORY
+02FC-                669       ;FFB0       :OPERAND BYTE COUNT
+02FC-                670       ;FFB2       : # OR $ OR NULL
+02FC-                671       ;FF42       :# CONTENT (DATA)
+02FC-                672       ;FF43-FF44  :$ CONTENT (ADRESS)
+02FC-                673       ;FFB3-FFB4  :CODE BUF. LENGHT
+02FC-                674
+02FC-                675       INTERPRET:              ;ASSEMBLER INTERPRETER
+02FC-CD E1 03        676 ( 17)                 CALL FINDCOM    ;FIND MNEMONIC FROM TABLE
+02FF-                677
+02FF-3E 20           678 (  7)                 LD A,' '
+0301-CD 3C 00        679 ( 17)                 CALL TXD
+0304-3E 20           680 (  7)                 LD A,' '
+0306-CD 3C 00        681 ( 17)                 CALL TXD
+0309-                682
+0309-                683
+0309-                684
+0309-11 80 FF        685 ( 10)                 LD DE,CODEBUF   ;CODE BUFFER
+030C-2A A2 FF        686 ( 16)                 LD HL,(TABFINDAD)       ;MNEMONIC ADRESS FROM TABLE (HOLDS BYTE COUNT AT THE MOMENT)
+030F-                687
+030F-                688
+030F-7E              689 (  7)                 LD A,(HL)       ;OPERAND COUNT
+0310-47              690 (  4)                 LD B,A
+0311-0E 00           691 (  7)                 LD C,0  ; CODE COUNT RESET
+0313-                692
+0313-                693
+0313-23              694 (  6)                 INC HL          ;HL AT FIRST OPERAND ADRESS(COMMAND)
+0314-7E              695 (  7) DISIN:  LD A,(HL)       ;TAKE COMMAND
+0315-12              696 (  7)                 LD (DE),A       ;WRITE TO CODE BUFFER
+0316-23              697 (  6)                 INC HL
+0317-13              698 (  6)                 INC DE
+0318-0C              699 (  4)                 INC C
+0319-10 F9           700 ( 8+)                 DJNZ DISIN
+031B-                701
+031B-3A B2 FF        702 ( 13)                 LD A,(DIYEZDOLAR)
+031E-FE 23           703 (  7)                 CP '#'
+0320-CC 86 03        704 (10+)                 CALL Z,DIYEZ1
+0323-FE 24           705 (  7)                 CP '$'
+0325-CC 8D 03        706 (10+)                 CALL Z,DOLLAR1
+0328-                707
+0328-79              708 (  4)                 LD A,C
+0329-32 B3 FF        709 ( 13)                 LD (CODEBUFLEN),A    ;CODE LENGHT
+032C-                710
+032C-                711
+032C-3A B2 FF        712 ( 13)                 LD A,(DIYEZDOLAR)       ;JUST OUTPUT COMPOSER TO GOOD VIEW
+032F-FE 00           713 (  7)                 CP 0
+0331-C2 43 03        714 ( 10)                 JP NZ,UZUN
+0334-3E 20           715 (  7)                 LD A,' '
+0336-CD 3C 00        716 ( 17)                 CALL TXD
+0339-3E 20           717 (  7)                 LD A,' '
+033B-CD 3C 00        718 ( 17)                 CALL TXD
+033E-3E 09           719 (  7)                 LD A,$09
+0340-CD 3C 00        720 ( 17)                 CALL TXD
+0343-                721
+0343-3E 20           722 (  7) UZUN:   LD A,' '
+0345-CD 3C 00        723 ( 17)                 CALL TXD
+0348-3E 09           724 (  7)                 LD A,$09
+034A-CD 3C 00        725 ( 17)                 CALL TXD
+034D-                726
+034D-                727
+034D-                728
+034D-                729
+034D-                730
+034D-                731
+034D-                732
+034D-21 80 FF        733 ( 10)                 LD HL,CODEBUF
+0350-41              734 (  4)                 LD B,C
+0351-3E 20           735 (  7)                 LD A,' '
+0353-CD 3C 00        736 ( 17)                 CALL TXD
+0356-3E 3A           737 (  7)                 LD A,':'
+0358-CD 3C 00        738 ( 17)                 CALL TXD
+035B-                739
+035B-7E              740 (  7) ISTEBU: LD A,(HL)
+035C-CD 37 0A        741 ( 17)                 CALL HEXOUT
+035F-3E 20           742 (  7)                 LD A,' '
+0361-CD 3C 00        743 ( 17)                 CALL TXD
+0364-23              744 (  6)                 INC HL
+0365-10 F4           745 ( 8+)                 DJNZ ISTEBU
+0367-                746
+0367-                747
+0367-                748
+0367-                749       ;------LINE ASSEMLY COMPLETED HERE
+0367-                750
+0367-2A A4 FF        751 ( 16)                 LD HL,(ASADR)
+036A-22 A6 FF        752 ( 20)                 LD (ASADCODE),HL
+036D-06 00           753 (  7)                 LD B,0
+036F-09              754 ( 11)                 ADD HL,BC
+0370-22 A4 FF        755 ( 20)                 LD (ASADR),HL
+0373-                756
+0373-                757
+0373-                758
+0373-                759
+0373-3A B3 FF        760 ( 13) YAZIM:  LD A,(CODEBUFLEN)       ;;WRITE ASSEMBLY LINE CODES FROM CODE BUFFER TO MEMORY
+0376-47              761 (  4)                 LD B,A          ;CODE LENGHT
+0377-                762
+0377-                763
+0377-2A A6 FF        764 ( 16)                 LD HL,(ASADCODE)  ; ASSEMBLY LINE START ADRESS
+037A-11 80 FF        765 ( 10)                 LD DE,CODEBUF   ;CODE BUFFER START ADRESS
+037D-1A              766 (  7) DISYAZ: LD A,(DE)
+037E-77              767 (  7)                 LD (HL),A
+037F-23              768 (  6)                 INC HL
+0380-13              769 (  6)                 INC DE
+0381-10 FA           770 ( 8+)                 DJNZ DISYAZ    ;WRITE ASSEMBLY LINE CODES TO MEMORY
+0383-                771
+0383-                772
+0383-                773
+0383-                774
+0383-C3 89 02        775 ( 10)                 JP AS_DON       ;GO TO NEXT ASSEMBLY LINE
+0386-                776                       ;JP MA_IN
+0386-                777
+0386-                778       DIYEZ1:
+0386-3A 42 FF        779 ( 13)                 LD A,(DATAINP)  ;CHANGE # CHAR TO OPERAND BYTE
+0389-12              780 (  7)                 LD (DE),A
+038A-13              781 (  6)                 INC DE
+038B-0C              782 (  4)                 INC C
+038C-C9              783 ( 10)                 RET
+038D-                784
+038D-                785       DOLLAR1:
+038D-                786
+038D-3A 43 FF        787 ( 13)                 LD A,(ADRSINP)   ;CHANGE $ CHAR TO DOUBLE OPERAND BYTE
+0390-12              788 (  7)                 LD (DE),A
+0391-13              789 (  6)                 INC DE
+0392-0C              790 (  4)                 INC C
+0393-3A 44 FF        791 ( 13)                 LD A,(ADRSINP+1)
+0396-12              792 (  7)                 LD (DE),A
+0397-13              793 (  6)                 INC DE
+0398-0C              794 (  4)                 INC C
+0399-C9              795 ( 10)                 RET
+039A-                796
+039A-                797
+039A-                798
+039A-                799
+039A-                800
+039A-                801       BYTEINP1:
+039A-32 B2 FF        802 ( 13)                 LD (DIYEZDOLAR),A
+039D-CD 11 08        803 ( 17)                 CALL BYTEIN1 ;AFTER#
+03A0-C9              804 ( 10)                 RET
+03A1-                805
+03A1-                806       BYTEINP2:
+03A1-32 B2 FF        807 ( 13)                 LD (DIYEZDOLAR),A
+03A4-CD E8 07        808 ( 17)                 CALL BYTEIN2 ;AFTER$
+03A7-C9              809 ( 10)                 RET
+03A8-                810
+03A8-                811
+03A8-                812
+03A8-21 60 FF        813 ( 10) CLRBUF: LD HL,COMINBUF
+03AB-06 0F           814 (  7)                 LD B,$0F
+03AD-3E 00           815 (  7) DIS30:  LD A,$00
+03AF-77              816 (  7)                 LD (HL),A
+03B0-23              817 (  6)                 INC HL
+03B1-10 FA           818 ( 8+)                 DJNZ DIS30  ;CLEAR INPUT BUFFER
+03B3-                819
+03B3-                820
+03B3-21 80 FF        821 ( 10)                 LD HL,CODEBUF
+03B6-06 0F           822 (  7)                 LD B,$0F
+03B8-3E 00           823 (  7) DISCB:  LD A,$00
+03BA-77              824 (  7)                 LD (HL),A
+03BB-23              825 (  6)                 INC HL
+03BC-10 FA           826 ( 8+)                 DJNZ DISCB  ;CLEAR CODE BUFFER
+03BE-                827
+03BE-3E 00           828 (  7)                 LD A,0
+03C0-32 A0 FF        829 ( 13)                 LD (LINELENGHT),A       ;CLEAR ALL COUNTER BUFFERS
+03C3-32 A1 FF        830 ( 13)                 LD (LINELENGHT+1),A
+03C6-32 B0 FF        831 ( 13)                 LD (OPBYTECNT),A
+03C9-32 B2 FF        832 ( 13)                 LD (DIYEZDOLAR),A
+03CC-32 B3 FF        833 ( 13)                 LD (CODEBUFLEN),A
+03CF-32 B4 FF        834 ( 13)                 LD (CODEBUFLEN+1),A
+03D2-                835
+03D2-                836
+03D2-C9              837 ( 10)                 RET
+03D3-                838
+03D3-                839
+03D3-                840
+03D3-                841       TABLE_AS:
+03D3-0A 0D           842                        .DB $0A,$0D
+03D5-41 73 73 65 
+     6D 62 6C 65 
+     72 3A           843                        .DB "Assembler:"
+03DF-0A 0D           844                        .DB $0A,$0D
+03E1-                845
+03E1-                846
+03E1-                847       ; THIS ROUTINE INSPIRED FROM NAIVE STRING MATCHING ALGORITHM!!
+03E1-                848
+03E1-                849       FINDCOM:                ;SEARCH UTIL OF INTERPRETER
+03E1-F5              850 ( 11)                 PUSH AF
+03E2-E5              851 ( 11)                 PUSH HL
+03E3-D5              852 ( 11)                 PUSH DE
+03E4-C5              853 ( 11)                 PUSH BC
+03E5-                854
+03E5-21 F6 0B        855 ( 10)                 LD HL,TABLECOD   ;SEARCH AND FIND MNEMONIC TABLE ADRESS INDEX
+03E8-22 A2 FF        856 ( 20)                 LD (TABFINDAD),HL
+03EB-2A A2 FF        857 ( 16) LOOPF:  LD HL,(TABFINDAD)
+03EE-11 60 FF        858 ( 10)                 LD DE, COMINBUF
+03F1-ED 4B A0 FF     859 ( 20)                 LD BC,(LINELENGHT)
+03F5-                860
+03F5-1A              861 (  7) LOOPC:  LD A,(DE)
+03F6-BE              862 (  7)                 CP (HL)
+03F7-C2 05 04        863 ( 10)                 JP NZ,NOTFOUND
+03FA-23              864 (  6)                 INC HL
+03FB-13              865 (  6)                 INC DE
+03FC-0B              866 (  6)                 DEC BC
+03FD-78              867 (  4)                 LD A, B
+03FE-B1              868 (  4)                 OR C
+03FF-C2 F5 03        869 ( 10)                 JP NZ,LOOPC
+0402-                870
+0402-C3 20 04        871 ( 10)                 JP FOUND
+0405-                872
+0405-                873       NOTFOUND:               ;IF STRING NOT FOUND INCREASE TABLE SEARCH ADRESS
+0405-2A A2 FF        874 ( 16)                 LD HL,(TABFINDAD)       ;THIS IS NAIVE STRING MATCHING ALGORITHM
+0408-23              875 (  6)                 INC HL
+0409-                876                    ;THIS CODE ADDED FOR TABLE END CONTROL
+0409-                877
+0409-E5              878 ( 11)                 PUSH HL                 ;;TABLE END CONTROL FOR SYNTAX ERROR
+040A-D5              879 ( 11)                 PUSH DE
+040B-                880
+040B-21 7D 1F        881 ( 10)                 LD HL,CODEND
+040E-ED 5B A2 FF     882 ( 20)                 LD DE,(TABFINDAD)
+0412-B7              883 (  4)                 OR A     ;CLEAR CARRY FLAG
+0413-ED 52           884 ( 15)                 SBC HL,DE
+0415-CA 28 04        885 ( 10)                 JP Z,ENDCONTROL
+0418-                886
+0418-D1              887 ( 10)                 POP DE
+0419-E1              888 ( 10)                 POP HL
+041A-                889
+041A-                890
+041A-                891
+041A-                892                       ;THIS CODE ADDED FOR TABLE END CONTROL
+041A-22 A2 FF        893 ( 20)                 LD (TABFINDAD),HL
+041D-C3 EB 03        894 ( 10)                 JP LOOPF       ;IF NOT CONTINUE SEARCH
+0420-                895
+0420-                896
+0420-22 A2 FF        897 ( 20) FOUND:  LD (TABFINDAD),HL     ;FINDED ADRESS IN TABLE
+0423-C1              898 ( 10)                 POP BC
+0424-D1              899 ( 10)                 POP DE
+0425-E1              900 ( 10)                 POP HL
+0426-F1              901 ( 10)                 POP AF
+0427-C9              902 ( 10)                 RET
+0428-                903
+0428-                904       ENDCONTROL:
+0428-3E 0D           905 (  7)                 LD A,$0D
+042A-CD 3C 00        906 ( 17)                 CALL TXD
+042D-3E 0A           907 (  7)                 LD A,$0A
+042F-CD 3C 00        908 ( 17)                 CALL TXD
+0432-06 0E           909 (  7)                 LD B,14
+0434-21 43 04        910 ( 10)                 LD HL,ERROR
+0437-7E              911 (  7) DISERR: LD A,(HL)
+0438-CD 3C 00        912 ( 17)                 CALL TXD
+043B-23              913 (  6)                 INC HL
+043C-10 F9           914 ( 8+)                 DJNZ DISERR
+043E-D1              915 ( 10)                 POP DE
+043F-E1              916 ( 10)                 POP HL
+0440-                917
+0440-C3 89 02        918 ( 10)                 JP AS_DON
+0443-                919
+0443-53 79 6E 74 
+     61 78 20        920       ERROR:   .DB "Syntax "
+044A-65 72 72 6F 
+     72 20 21        921                        .DB "error !"
+0451-                922
+0451-                923       ;--INTERPRETER ENDED
+0451-                924
+0451-                925       ;---------efex-ASSEMBLER FINISHED HERE--------------------------------------
+0451-                926
+0451-                927
+0451-                928
+0451-                929       ;-----------------efex DISASSEMBLER-START-HERE----------------------------------
+0451-                930       ;
+0451-                931       ;FFC0H :TOTBYTECNT   ;TOTAL BYTE COUNT OF LINE
+0451-                932       ;FFC2H :DISCODELEN   ;TABLE FINDED COMMAND BYTE LENGHT 1,2,3,OR 4..
+0451-                933       ;FFC4H :DISTOTLEN    ;COMMAND TOTAL LENGHT WITH OPERAND
+0451-                934       ;FFC6H :NULDOLNUM    ;IF THE OPERAND NULL, BYTE OR WORD(1 BYTE-2 BYTE) # OR DOLLAR
+0451-                935       ;FFD0H :DISADDR      ;DISSASEMBLING ADRESS
+0451-                936       ;FFD2H :DISFINDAD    ;DISASEMBLER FINDED CODE ADRESS
+0451-                937       ;FFD4  :MNESTAD      ;MNEMONIC START ADRESS IN TABLE
+0451-                938       ;FFD6  :MNENDAD      ;MNEMONIC END ADRESS IN TABLE
+0451-                939       ;FFDAH :MNELEN       ;MNEMONIC LENGHT
+0451-                940       ;F900H :NEXTCODE     ;NEXT CODE START ADRESS IN DISSASEMBLE SECTOR !!!!FFDC CALISMADI!!!!
+0451-                941       ;F902H :SECTORC      ;DISASEMBLING  LINE COUNT
+0451-                942       ;FFD8H :OPERAND      ;# OR $ OPERAND IN COMMAND LINE
+0451-                943       ;FFE0H :OPCNT        ;OPERAND COUNT (#,$ : 0,1 OR 2)
+0451-                944       ;3F80-3F90  :CODEBUF         ;CODE BUFFER-----
+0451-                945
+0451-                946       DISASSEMBLER:
+0451-                947
+FFC0-                948       TOTBYTECNT       .EQ $FFC0
+FFD0-                949       DISADDR          .EQ $FFD0
+FFD2-                950       DISFINDAD        .EQ $FFD2
+FFC2-                951       DISCODELEN       .EQ $FFC2
+FFC4-                952       DISTOTLEN        .EQ $FFC4
+FFD4-                953       MNESTAD          .EQ $FFD4
+FFD6-                954       MNENDAD          .EQ $FFD6
+FFD8-                955       OPERAND          .EQ $FFD8
+FFDA-                956       MNELEN           .EQ $FFDA
+F900-                957       NEXTCODE         .EQ $F900
+F902-                958       SECTORC          .EQ $F902
+FFE0-                959       OPCNT            .EQ $FFE0
+0451-                960
+0451-                961
+0451-                962
+0451-                963
+0451-21 60 04        964 ( 10)                 LD HL,TABLE_DS ;DISASSEMBLER MESSAGE
+0454-06 18           965 (  7)                 LD B,24
+0456-7E              966 (  7) DISDS:  LD A,(HL)
+0457-CD 3C 00        967 ( 17)                 CALL TXD
+045A-23              968 (  6)                 INC HL
+045B-10 F9           969 ( 8+)                 DJNZ DISDS
+045D-C3 78 04        970 ( 10)                 JP CONTDS
+0460-                971
+0460-                972       TABLE_DS:
+0460-0A 0D           973                        .DB $0A,$0D
+0462-44 69 73 61 
+     73 73 65 6D 
+     62 6C 79 20     974                        .DB "Disassembly "
+046E-6C 69 73 74 
+     69 6E 67 3A     975                        .DB "listing:"
+0476-0A 0D           976                        .DB $0A,$0D
+0478-                977
+0478-                978
+0478-                979       CONTDS:
+0478-3E 00           980 (  7)                 LD A,0
+047A-32 A0 FF        981 ( 13)                 LD (LINELENGHT),A       ;CLEAR ALL COUNTER BUFFERS
+047D-32 A1 FF        982 ( 13)                 LD (LINELENGHT+1),A
+0480-32 B0 FF        983 ( 13)                 LD (OPBYTECNT),A
+0483-32 B2 FF        984 ( 13)                 LD (DIYEZDOLAR),A
+0486-32 B3 FF        985 ( 13)                 LD (CODEBUFLEN),A
+0489-32 B4 FF        986 ( 13)                 LD (CODEBUFLEN+1),A
+048C-32 C0 FF        987 ( 13)                 LD (TOTBYTECNT),A
+048F-32 C2 FF        988 ( 13)                 LD (DISCODELEN),A
+0492-32 E0 FF        989 ( 13)                 LD (OPCNT),A
+0495-32 00 F9        990 ( 13)                 LD (NEXTCODE),A
+0498-32 01 F9        991 ( 13)                 LD (NEXTCODE+1),A
+049B-                992
+049B-                993       ;---Disasembling adress input---
+049B-3E 44           994 (  7) ASKDIS: LD A,'D'
+049D-CD 3C 00        995 ( 17)                 CALL TXD
+04A0-3E 2D           996 (  7)                 LD A,'-'
+04A2-CD 3C 00        997 ( 17)                 CALL TXD
+04A5-3E 24           998 (  7)                 LD A, '$'
+04A7-CD 3C 00        999 ( 17)                 CALL TXD
+04AA-3E 3F          1000 (  7)                 LD A, '?'
+04AC-CD 3C 00       1001 ( 17)                 CALL TXD
+04AF-3E 08          1002 (  7)                 LD A, $08
+04B1-CD 3C 00       1003 ( 17)                 CALL TXD ; DISPLAY 4 CHAR INPUT PROMPT
+04B4-               1004
+04B4-CD E8 07       1005 ( 17)                 CALL BYTEIN2
+04B7-               1006
+04B7-2A 43 FF       1007 ( 16)                 LD HL,(ADRSINP) ; 3F43 STORES RESULT ADRESS
+04BA-3E 3A          1008 (  7)                 LD A, ':'
+04BC-CD 3C 00       1009 ( 17)                 CALL TXD
+04BF-               1010
+04BF-2A 43 FF       1011 ( 16)                 LD HL,(ADRSINP)   ;GIRILEN ADRESS
+04C2-22 00 F9       1012 ( 20)                 LD (NEXTCODE),HL        ;NEXTCODE IS INCREASE LOOP ADRESS FOR DISASSEMBLER
+04C5-               1013       ;----------ADRESS INPUT COMPLETED HERE---
+04C5-               1014
+04C5-               1015       DONDISZ:
+04C5-3E 10          1016 (  7)                 LD A,16                 ;16 LINES SHOWING PER PROCESS
+04C7-32 02 F9       1017 ( 13)                 LD (SECTORC),A
+04CA-               1018
+04CA-               1019       DONDISY:
+04CA-3E 00          1020 (  7)                 LD A,0
+04CC-32 A0 FF       1021 ( 13)                 LD (LINELENGHT),A       ;CLEAR ALL COUNTER BUFFERS
+04CF-32 A1 FF       1022 ( 13)                 LD (LINELENGHT+1),A
+04D2-32 B0 FF       1023 ( 13)                 LD (OPBYTECNT),A
+04D5-32 B2 FF       1024 ( 13)                 LD (DIYEZDOLAR),A
+04D8-32 B3 FF       1025 ( 13)                 LD (CODEBUFLEN),A
+04DB-32 B4 FF       1026 ( 13)                 LD (CODEBUFLEN+1),A
+04DE-32 C0 FF       1027 ( 13)                 LD (TOTBYTECNT),A
+04E1-32 C2 FF       1028 ( 13)                 LD (DISCODELEN),A
+04E4-32 E0 FF       1029 ( 13)                 LD (OPCNT),A
+04E7-               1030
+04E7-               1031
+04E7-               1032       DONDISX:
+04E7-2A 00 F9       1033 ( 16)                 LD HL,(NEXTCODE)                                ;MAIN LOOP FOR DISASEMBLY LINES
+04EA-22 D0 FF       1034 ( 20)                 LD (DISADDR),HL
+04ED-               1035
+04ED-21 01 00       1036 ( 10)                 LD HL,1
+04F0-22 A0 FF       1037 ( 20)                 LD (LINELENGHT),HL
+04F3-21 F6 0B       1038 ( 10)                 LD HL,TABLECOD
+04F6-ED 5B D0 FF    1039 ( 20)                 LD DE,(DISADDR)
+04FA-               1040
+04FA-1A             1041 (  7) DONDIS: LD A,(DE)
+04FB-FE ED          1042 (  7)                 CP $ED
+04FD-CA 22 05       1043 ( 10)                 JP Z,AFTER              ;IF AFTER ED,CB,DD,FD COMMANDS
+0500-FE CB          1044 (  7)                 CP $CB
+0502-CA 22 05       1045 ( 10)                 JP Z,AFTER
+0505-FE DD          1046 (  7)                 CP $DD
+0507-CA 22 05       1047 ( 10)                 JP Z,AFTER
+050A-FE FD          1048 (  7)                 CP $FD
+050C-CA 22 05       1049 ( 10)                 JP Z,AFTER
+050F-               1050
+050F-BE             1051 (  7)                 CP (HL)
+0510-CA 17 05       1052 ( 10)                 JP Z,CHECKINDEX     ;JP Z,FOUNDDIS
+0513-23             1053 (  6)                 INC HL
+0514-C3 FA 04       1054 ( 10) DVM1:   JP DONDIS
+0517-               1055
+0517-               1056
+0517-               1057       CHECKINDEX:      ;CHECK IF $FF AFTER CODE?
+0517-23             1058 (  6)                 INC HL
+0518-3E FF          1059 (  7)                 LD A,$FF
+051A-BE             1060 (  7)                 CP (HL)
+051B-C2 14 05       1061 ( 10)                 JP NZ,DVM1 ;NO INDEX--->CONT TO SEARC
+051E-2B             1062 (  6)                 DEC HL     ;INDEX FOUND, DEC HL TO COMMAND'S ADRESS
+051F-C3 99 05       1063 ( 10)                 JP FOUNDDIS
+0522-               1064
+0522-               1065               ;----AFTER DD DE,EE,FB,.. COMMANDS PROCESS START HERE---
+0522-               1066       AFTER:
+0522-               1067
+0522-               1068
+0522-21 08 16       1069 ( 10)                 LD HL,AFTERCOD   ;SEARCH AND FIND MNEMONIC TABLE ADRESS INDEX
+0525-22 A2 FF       1070 ( 20)                 LD (TABFINDAD),HL
+0528-2A A2 FF       1071 ( 16) LOOPFD: LD HL,(TABFINDAD)
+052B-ED 5B D0 FF    1072 ( 20)                 LD DE, (DISADDR)
+052F-01 02 00       1073 ( 10)                 LD BC,2         ;(LINELENGHT)
+0532-               1074
+0532-1A             1075 (  7) LOOPCD: LD A,(DE)
+0533-BE             1076 (  7)                 CP (HL)
+0534-C2 42 05       1077 ( 10)                 JP NZ,NOTFOUNDD
+0537-23             1078 (  6)                 INC HL
+0538-13             1079 (  6)                 INC DE
+0539-0B             1080 (  6)                 DEC BC
+053A-78             1081 (  4)                 LD A, B
+053B-B1             1082 (  4)                 OR C
+053C-C2 32 05       1083 ( 10)                 JP NZ,LOOPCD
+053F-               1084
+053F-C3 93 05       1085 ( 10)                 JP FOUNDD
+0542-               1086
+0542-               1087       NOTFOUNDD:              ;IF STRING NOT FOUND INCREASE TABLE SEARCH ADRESS
+0542-2A A2 FF       1088 ( 16)                 LD HL,(TABFINDAD)       ;THIS IS NAIVE STRING MATCHING ALGORITHM
+0545-23             1089 (  6)                 INC HL
+0546-               1090
+0546-               1091            ;THIS CODE ADDED FOR TABLE END CONTROL
+0546-               1092
+0546-E5             1093 ( 11)                 PUSH HL                 ;;TABLE END CONTROL FOR SYNTAX ERROR
+0547-D5             1094 ( 11)                 PUSH DE
+0548-               1095
+0548-21 7D 1F       1096 ( 10)                 LD HL,CODEND
+054B-ED 5B A2 FF    1097 ( 20)                 LD DE,(TABFINDAD)
+054F-B7             1098 (  4)                 OR A     ;CLEAR CARRY FLAG
+0550-ED 52          1099 ( 15)                 SBC HL,DE
+0552-CA 5D 05       1100 ( 10)                 JP Z,ENDCONTROLD
+0555-               1101
+0555-D1             1102 ( 10)                 POP DE
+0556-E1             1103 ( 10)                 POP HL
+0557-               1104
+0557-               1105
+0557-               1106
+0557-               1107                    ;THIS CODE ADDED FOR TABLE END CONTROL
+0557-               1108
+0557-22 A2 FF       1109 ( 20)                 LD (TABFINDAD),HL
+055A-C3 28 05       1110 ( 10)                 JP LOOPFD       ;IF NOT CONTINUE SEARCH
+055D-               1111
+055D-               1112       ENDCONTROLD:            ;UNKNOWN CODE ROUTINE; PRINT *** AND GOTO NEXT ADRESS
+055D-               1113
+055D-3E 0A          1114 (  7)                 LD A,$0A
+055F-CD 3C 00       1115 ( 17)                 CALL TXD
+0562-3E 0D          1116 (  7)                 LD A,$0D
+0564-CD 3C 00       1117 ( 17)                 CALL TXD
+0567-               1118
+0567-2A D0 FF       1119 ( 16)                 LD HL,(DISADDR)
+056A-7C             1120 (  4)                 LD A,H
+056B-CD 37 0A       1121 ( 17)                 CALL HEXOUT
+056E-7D             1122 (  4)                 LD A,L
+056F-CD 37 0A       1123 ( 17)                 CALL HEXOUT
+0572-3E 20          1124 (  7)                 LD A,' '
+0574-CD 3C 00       1125 ( 17)                 CALL TXD
+0577-3E 20          1126 (  7)                 LD A,' '
+0579-CD 3C 00       1127 ( 17)                 CALL TXD
+057C-3E 2A          1128 (  7)                 LD A,'*'
+057E-CD 3C 00       1129 ( 17)                 CALL TXD
+0581-3E 2A          1130 (  7)                 LD A,'*'
+0583-CD 3C 00       1131 ( 17)                 CALL TXD
+0586-3E 2A          1132 (  7)                 LD A,'*'
+0588-CD 3C 00       1133 ( 17)                 CALL TXD
+058B-               1134
+058B-               1135
+058B-23             1136 (  6)                 INC HL
+058C-23             1137 (  6)                 INC HL
+058D-22 00 F9       1138 ( 20)                 LD (NEXTCODE),HL
+0590-C3 E7 04       1139 ( 10)                 JP DONDISX
+0593-               1140
+0593-               1141
+0593-               1142
+0593-               1143
+0593-2A A2 FF       1144 ( 16) FOUNDD: LD HL,(TABFINDAD)
+0596-               1145
+0596-22 D2 FF       1146 ( 20)                 LD (DISFINDAD),HL
+0599-               1147
+0599-               1148
+0599-               1149
+0599-               1150
+0599-               1151
+0599-               1152       ;------AFTER DD DE EE FB.. COMMANDS PROCESS END HERE
+0599-               1153
+0599-               1154
+0599-               1155       FOUNDDIS:               ;ANYWAY (AFTER OR SINGLE) COMMAND FOUND
+0599-               1156                       ;LD  HL,(TABFINDAD)
+0599-               1157
+0599-22 D2 FF       1158 ( 20)                 LD  (DISFINDAD),HL
+059C-               1159
+059C-3E 0A          1160 (  7)                 LD A,$0A
+059E-CD 3C 00       1161 ( 17)                 CALL TXD
+05A1-3E 0D          1162 (  7)                 LD A,$0D
+05A3-CD 3C 00       1163 ( 17)                 CALL TXD
+05A6-               1164
+05A6-               1165
+05A6-2A D2 FF       1166 ( 16)                 LD HL,(DISFINDAD)       ;FINDED CODE FIRST BYTE
+05A9-2B             1167 (  6)                 DEC HL
+05AA-7E             1168 (  7)                 LD A,(HL)
+05AB-32 C2 FF       1169 ( 13)                 LD (DISCODELEN),A       ;CODE BYTE LENGHT
+05AE-2B             1170 (  6)                 DEC HL
+05AF-22 D6 FF       1171 ( 20)                 LD (MNENDAD),HL         ;MNEMONIC END ADRESS
+05B2-               1172
+05B2-2B             1173 (  6) DIS45:  DEC HL
+05B3-7E             1174 (  7)                 LD A,(HL)
+05B4-FE 5F          1175 (  7)                 CP '_'
+05B6-20 FA          1176 ( 7+)                 JR NZ,DIS45
+05B8-23             1177 (  6)                 INC HL
+05B9-22 D4 FF       1178 ( 20)                 LD (MNESTAD),HL         ;MNEMONIC START ADRESS IN TABLE
+05BC-3A C2 FF       1179 ( 13)                 LD A,(DISCODELEN)
+05BF-47             1180 (  4)                 LD B,A
+05C0-2A D0 FF       1181 ( 16)                 LD HL,(DISADDR)
+05C3-23             1182 (  6) DIS51:  INC HL
+05C4-10 FD          1183 ( 8+)                 DJNZ DIS51
+05C6-               1184
+05C6-               1185
+05C6-               1186                                                       ;HL HOLDS OPERAND FIRST BYTE HERE
+05C6-22 D8 FF       1187 ( 20)                 LD (OPERAND),HL  ;OPERAND1: IF #; FIRST BYTE, IF $; LOW AND HIGH BYTES IN ORDER
+05C9-               1188
+05C9-               1189
+05C9-               1190
+05C9-               1191       DISPROC:                ;WRITES DISASEMBLED CODE TO CODE BUFFER
+05C9-               1192
+05C9-3E 0D          1193 (  7)                 LD A,$0D
+05CB-CD 3C 00       1194 ( 17)                 CALL TXD
+05CE-3E 0D          1195 (  7)                 LD A,$0D
+05D0-CD 3C 00       1196 ( 17)                 CALL TXD
+05D3-               1197
+05D3-               1198                       ; BURADA MNEMONIC LENGHT IN HESAPLANMASI GEREKIYOR
+05D3-2A D4 FF       1199 ( 16)                 LD HL,(MNESTAD)
+05D6-54             1200 (  4)                 LD D,H
+05D7-5D             1201 (  4)                 LD E,L
+05D8-2A D6 FF       1202 ( 16)                 LD HL,(MNENDAD)
+05DB-B7             1203 (  4)                 OR A
+05DC-ED 52          1204 ( 15)                 SBC HL,DE
+05DE-22 DA FF       1205 ( 20)                 LD (MNELEN),HL
+05E1-               1206
+05E1-3A DA FF       1207 ( 13)                 LD A,(MNELEN)   ;AT LAST ITS 1 BYTE AND STORED IN L
+05E4-               1208
+05E4-               1209
+05E4-2A D0 FF       1210 ( 16)                 LD HL,(DISADDR)
+05E7-7C             1211 (  4)                 LD A,H
+05E8-CD 37 0A       1212 ( 17)                 CALL HEXOUT
+05EB-7D             1213 (  4)                 LD A,L
+05EC-CD 37 0A       1214 ( 17)                 CALL HEXOUT
+05EF-3E 20          1215 (  7)                 LD A,' '
+05F1-CD 3C 00       1216 ( 17)                 CALL TXD
+05F4-3E 20          1217 (  7)                 LD A,' '
+05F6-CD 3C 00       1218 ( 17)                 CALL TXD
+05F9-               1219
+05F9-               1220
+05F9-               1221
+05F9-3A DA FF       1222 ( 13)                 LD A,(MNELEN)   ;AT LAST ITS 1 BYTE AND STORED IN L
+05FC-2A D4 FF       1223 ( 16)                 LD HL,(MNESTAD)
+05FF-47             1224 (  4)                 LD B,A  ;(MNELEN)
+0600-04             1225 (  4)                 INC B
+0601-7E             1226 (  7) DIS46:  LD A,(HL)
+0602-FE 23          1227 (  7)                 CP '#'
+0604-CA 40 06       1228 ( 10)                 JP Z,DISDIYEZ
+0607-FE 24          1229 (  7)                 CP '$'
+0609-CA 56 06       1230 ( 10)                 JP Z,DISDOLAR
+060C-CD 3C 00       1231 ( 17)                 CALL TXD
+060F-23             1232 (  6) DIS50:  INC HL
+0610-10 EF          1233 ( 8+)                 DJNZ DIS46
+0612-               1234
+0612-               1235
+0612-               1236
+0612-               1237
+0612-               1238
+0612-2A 00 F9       1239 ( 16)                 LD HL,(NEXTCODE)
+0615-3A C2 FF       1240 ( 13)                 LD A,(DISCODELEN) ;CODE LENGHT
+0618-47             1241 (  4)                 LD B,A
+0619-3A E0 FF       1242 ( 13)                 LD A,(OPCNT)    ;OPERAND COUND
+061C-80             1243 (  4)                 ADD A,B
+061D-11 00 00       1244 ( 10)                 LD DE,0
+0620-5F             1245 (  4)                 LD E,A
+0621-19             1246 ( 11)                 ADD HL,DE
+0622-22 00 F9       1247 ( 20)                 LD (NEXTCODE),HL
+0625-               1248
+0625-               1249
+0625-               1250
+0625-3A 02 F9       1251 ( 13)                 LD A,(SECTORC)
+0628-3D             1252 (  4)                 DEC A
+0629-CA 32 06       1253 ( 10)                 JP Z,DONE       ;JP Z,MA_IN
+062C-32 02 F9       1254 ( 13)                 LD (SECTORC),A
+062F-               1255
+062F-C3 CA 04       1256 ( 10)                 JP DONDISY
+0632-               1257                       ;JP MA_IN               ;EXIT POINT FROM DISASSEMBLER
+0632-               1258
+0632-CD 48 00       1259 ( 17) DONE:   CALL RXD
+0635-FE 1B          1260 (  7)                 CP $1B
+0637-CA 72 00       1261 ( 10)                 JP Z,MA_IN
+063A-C3 C5 04       1262 ( 10)                 JP DONDISZ
+063D-C3 32 06       1263 ( 10)                 JP DONE
+0640-               1264
+0640-               1265
+0640-               1266
+0640-               1267       DISDIYEZ:
+0640-3E 01          1268 (  7)                 LD A,1
+0642-32 E0 FF       1269 ( 13)                 LD (OPCNT),A
+0645-3E 23          1270 (  7)                 LD A,'#'
+0647-CD 3C 00       1271 ( 17)                 CALL TXD
+064A-E5             1272 ( 11)                 PUSH HL
+064B-2A D8 FF       1273 ( 16)                 LD HL,(OPERAND)
+064E-7E             1274 (  7)                 LD A,(HL)
+064F-CD 37 0A       1275 ( 17)                 CALL HEXOUT
+0652-E1             1276 ( 10)                 POP HL
+0653-C3 0F 06       1277 ( 10)                 JP DIS50
+0656-               1278
+0656-               1279       DISDOLAR:
+0656-3E 02          1280 (  7)                 LD A,2
+0658-32 E0 FF       1281 ( 13)                 LD (OPCNT),A
+065B-3E 24          1282 (  7)                 LD A,'$'
+065D-CD 3C 00       1283 ( 17)                 CALL TXD
+0660-E5             1284 ( 11)                 PUSH HL
+0661-2A D8 FF       1285 ( 16)                 LD HL,(OPERAND)
+0664-23             1286 (  6)                 INC HL
+0665-7E             1287 (  7)                 LD A,(HL)
+0666-CD 37 0A       1288 ( 17)                 CALL HEXOUT
+0669-2B             1289 (  6)                 DEC HL
+066A-7E             1290 (  7)                 LD A,(HL)
+066B-CD 37 0A       1291 ( 17)                 CALL HEXOUT
+066E-E1             1292 ( 10)                 POP HL
+066F-C3 0F 06       1293 ( 10)                 JP DIS50
+0672-               1294
+0672-               1295
+0672-               1296
+0672-               1297       ;--------------DISASSEMBLER FINISHED HERE
+0672-               1298
+0672-               1299
+0672-               1300
+0672-               1301       ;------------------------------------MOVE---------------------------------
+0672-               1302
+0672-               1303       MOVE:
+0672-               1304
+0672-               1305
+0672-CD 94 06       1306 ( 17)                 CALL MOVE_SR     ;HL HOLDS SOURCE
+0675-E5             1307 ( 11)                 PUSH HL
+0676-CD A3 06       1308 ( 17)                 CALL MOVE_DT     ;DE HOLDS TARGET
+0679-D5             1309 ( 11)                 PUSH DE
+067A-CD B3 06       1310 ( 17)                 CALL MOVE_LNT    ;BC HOLDS LENGHT
+067D-               1311
+067D-D1             1312 ( 10)                 POP DE
+067E-E1             1313 ( 10)                 POP HL
+067F-               1314
+067F-               1315
+067F-7E             1316 (  7) LOP15:  LD A,(HL)      ;BLOCK COPY SUBROUTINE
+0680-12             1317 (  7)                 LD (DE),A
+0681-23             1318 (  6)                 INC HL
+0682-13             1319 (  6)                 INC DE
+0683-0B             1320 (  6)                 DEC BC
+0684-78             1321 (  4)                 LD A,B
+0685-B1             1322 (  4)                 OR C
+0686-C2 7F 06       1323 ( 10)                 JP NZ,LOP15
+0689-               1324
+0689-21 F3 06       1325 ( 10)                 LD HL, TABLE14   ;MOVE COMPLETE MSG
+068C-06 13          1326 (  7)                 LD B,19
+068E-CD BA 01       1327 ( 17)                 CALL PRINT
+0691-               1328
+0691-               1329
+0691-C3 72 00       1330 ( 10)                 JP MA_IN
+0694-               1331
+0694-               1332
+0694-               1333       MOVE_SR:
+0694-21 C4 06       1334 ( 10)                 LD HL,TBLMVSR   ;  DISPLAY 4 CHAR INPUT PROMPT
+0697-06 11          1335 (  7)                 LD B,17
+0699-CD BA 01       1336 ( 17)                 CALL PRINT
+069C-CD E8 07       1337 ( 17)                 CALL BYTEIN2
+069F-2A 43 FF       1338 ( 16)                 LD HL,(ADRSINP) ;HL HOLDS SOURCE ADRESS
+06A2-C9             1339 ( 10)                 RET
+06A3-               1340
+06A3-               1341
+06A3-               1342       MOVE_DT:
+06A3-21 D5 06       1343 ( 10)                 LD HL,TBLMVDT
+06A6-06 12          1344 (  7)                 LD B,18
+06A8-CD BA 01       1345 ( 17)                 CALL PRINT
+06AB-CD E8 07       1346 ( 17)                 CALL BYTEIN2    ;2 BYTE INPUT
+06AE-2A 43 FF       1347 ( 16)                 LD HL, (ADRSINP)
+06B1-EB             1348 (  4)                 EX DE,HL     ;DE HOLDS TARGET ADRESS
+06B2-C9             1349 ( 10)                 RET
+06B3-               1350
+06B3-               1351
+06B3-               1352       MOVE_LNT:
+06B3-21 E7 06       1353 ( 10)                 LD HL,TBLMVLN
+06B6-06 0C          1354 (  7)                 LD B,12
+06B8-CD BA 01       1355 ( 17)                 CALL PRINT
+06BB-CD E8 07       1356 ( 17)                 CALL BYTEIN2    ;2 BYTE INPUT
+06BE-2A 43 FF       1357 ( 16)                 LD HL, (ADRSINP)
+06C1-44             1358 (  4)                 LD B,H
+06C2-4D             1359 (  4)                 LD C,L          ;BC HOLDS BLOCK LENGHT
+06C3-C9             1360 ( 10)                 RET
+06C4-               1361
+06C4-               1362       TBLMVSR:
+06C4-0A 0D          1363                        .DB $0A,$0D
+06C6-4D 6F 76 65 
+     20 53 6F 75 
+     72 63 65 20    1364                        .DB "Move Source "
+06D2-24 3F 08       1365                        .DB "$?",$08
+06D5-               1366
+06D5-               1367
+06D5-               1368       TBLMVDT:
+06D5-14 20          1369                        .DB 020,$20
+06D7-44 65 73 74 
+     69 6E 61 74 
+     69 6F 6E 20 
+     20             1370                        .DB "Destination  "
+06E4-24 3F 08       1371                        .DB "$?",$08
+06E7-               1372
+06E7-               1373       TBLMVLN:
+06E7-14 20          1374                        .DB 020,$20
+06E9-4C 65 6E 67 
+     68 74 20       1375                        .DB "Lenght "
+06F0-24 3F 08       1376                        .DB "$?",$08
+06F3-               1377
+06F3-               1378       TABLE14:
+06F3-0A 0D          1379                        .DB $0A,$0D
+06F5-4D 6F 76 65 
+     20             1380                        .DB "Move "
+06FA-63 6F 6D 70 
+     6C 65 74 65 
+     20 21          1381                        .DB "complete !"
+0704-0A 0D          1382                        .DB $0A,$0D
+0706-               1383
+0706-               1384
+0706-               1385       ;--------------MOVE END
+0706-               1386
+0706-               1387       ;------------------------------------FILL---------------------------------
+0706-               1388
+0706-               1389       FILL:
+0706-               1390
+0706-               1391
+0706-CD 27 07       1392 ( 17)                 CALL FILL_SR     ;HL HOLDS START ADR
+0709-E5             1393 ( 11)                 PUSH HL
+070A-CD 36 07       1394 ( 17)                 CALL FILL_DT     ;DE HOLDS LENGHT
+070D-D5             1395 ( 11)                 PUSH DE
+070E-CD 46 07       1396 ( 17)                 CALL FILL_BYTE
+0711-               1397
+0711-D1             1398 ( 10)                 POP DE
+0712-E1             1399 ( 10)                 POP HL
+0713-               1400
+0713-               1401
+0713-79             1402 (  4) LOP15F: LD A,C  ;FILL SUBROUTINE
+0714-77             1403 (  7)                 LD (HL),A
+0715-23             1404 (  6)                 INC HL
+0716-1B             1405 (  6)                 DEC DE
+0717-7A             1406 (  4)                 LD A,D
+0718-B3             1407 (  4)                 OR E
+0719-C2 13 07       1408 ( 10)                 JP NZ,LOP15F
+071C-               1409
+071C-21 8B 07       1410 ( 10)                 LD HL, TABLE14F   ;MOVE COMPLETE MSG
+071F-06 13          1411 (  7)                 LD B,19
+0721-CD BA 01       1412 ( 17)                 CALL PRINT
+0724-               1413
+0724-               1414
+0724-C3 72 00       1415 ( 10)                 JP MA_IN
+0727-               1416
+0727-               1417
+0727-               1418       FILL_SR:
+0727-21 56 07       1419 ( 10)                 LD HL,TBLFLSR   ;  DISPLAY 4 CHAR INPUT PROMPT
+072A-06 11          1420 (  7)                 LD B,17
+072C-CD BA 01       1421 ( 17)                 CALL PRINT
+072F-CD E8 07       1422 ( 17)                 CALL BYTEIN2
+0732-2A 43 FF       1423 ( 16)                 LD HL,(ADRSINP) ;HL HOLDS SOURCE ADRESS
+0735-C9             1424 ( 10)                 RET
+0736-               1425
+0736-               1426
+0736-               1427       FILL_DT:
+0736-21 67 07       1428 ( 10)                 LD HL,TBLFLDT
+0739-06 12          1429 (  7)                 LD B,18
+073B-CD BA 01       1430 ( 17)                 CALL PRINT
+073E-CD E8 07       1431 ( 17)                 CALL BYTEIN2    ;2 BYTE INPUT
+0741-2A 43 FF       1432 ( 16)                 LD HL, (ADRSINP)
+0744-EB             1433 (  4)                 EX DE,HL     ;DE HOLDS TARGET ADRESS
+0745-C9             1434 ( 10)                 RET
+0746-               1435
+0746-               1436       FILL_BYTE:
+0746-21 79 07       1437 ( 10)                 LD HL,TBLFLBY
+0749-06 12          1438 (  7)                 LD B,18
+074B-CD BA 01       1439 ( 17)                 CALL PRINT
+074E-CD 11 08       1440 ( 17)                 CALL BYTEIN1    ;1 BYTE INPUT
+0751-3A 42 FF       1441 ( 13)                 LD A, (DATAINP) ;C HOLDS VALUE TO FILL WITH
+0754-4F             1442 (  4)                 LD C,A
+0755-C9             1443 ( 10)                 RET
+0756-               1444
+0756-               1445
+0756-               1446       TBLFLSR:
+0756-0A 0D          1447                        .DB $0A,$0D      ;
+0758-53 74 61 72 
+     74 20 61 64 
+     72 2E 20 3A    1448                        .DB "Start adr. :"
+0764-24 3F 08       1449                        .DB "$?",$08
+0767-               1450
+0767-               1451
+0767-               1452       TBLFLDT:
+0767-14 20          1453                        .DB 020,$20     ;
+0769-4C 65 6E 67 
+     68 74 20 20 
+     20 20 20 20 
+     20             1454                        .DB "Lenght       "
+0776-24 3F 08       1455                        .DB "$?",$08
+0779-               1456
+0779-               1457       TBLFLBY:
+0779-14 20          1458                        .DB 020,$20     ;
+077B-46 69 6C 6C 
+     20 77 69 74 
+     68 20 20 20 
+     20             1459                        .DB "Fill with    "
+0788-23 3F 08       1460                        .DB "#?",$08
+078B-               1461
+078B-               1462
+078B-               1463
+078B-               1464       TABLE14F:
+078B-0A 0D          1465                        .DB $0A,$0D
+078D-46 69 6C 6C 
+     20             1466                        .DB "Fill "
+0792-63 6F 6D 70 
+     6C 65 74 65 
+     20 21          1467                        .DB "complete !"
+079C-0A 0D          1468                        .DB $0A,$0D
+079E-               1469
+079E-               1470
+079E-               1471       ;--------------FILL END
+079E-               1472
+079E-               1473
+079E-               1474
+079E-               1475       ;-----------------SAVE-----------------------
+079E-               1476       ;HL: START ADRESS, DE:END ADRESS TO SAVE
+079E-               1477
+079E-               1478       SAVEX:
+079E-               1479
+079E-               1480
+079E-CD AC 07       1481 ( 17)                 CALL SAVE_ADR1
+07A1-E5             1482 ( 11)                 PUSH HL
+07A2-               1483
+07A2-CD BB 07       1484 ( 17)                 CALL SAVE_ADR2
+07A5-E1             1485 ( 10)                 POP HL
+07A6-               1486
+07A6-CD B9 09       1487 ( 17)         CALL INTSAVE
+07A9-C3 72 00       1488 ( 10)         JP MA_IN
+07AC-               1489
+07AC-               1490
+07AC-               1491
+07AC-               1492
+07AC-               1493
+07AC-               1494
+07AC-               1495       SAVE_ADR1:
+07AC-21 CE 07       1496 ( 10)                 LD HL,TBLSV1
+07AF-06 0B          1497 (  7)                 LD B,11
+07B1-CD BA 01       1498 ( 17)                 CALL PRINT
+07B4-               1499
+07B4-CD E8 07       1500 ( 17)                 CALL BYTEIN2
+07B7-2A 43 FF       1501 ( 16)                 LD HL,(ADRSINP)
+07BA-C9             1502 ( 10)                 RET
+07BB-               1503
+07BB-               1504       SAVE_ADR2:
+07BB-21 DB 07       1505 ( 10)                 LD HL,TBLSV2
+07BE-06 0B          1506 (  7)                 LD B,11
+07C0-CD BA 01       1507 ( 17)                 CALL PRINT
+07C3-               1508
+07C3-CD E8 07       1509 ( 17)                 CALL BYTEIN2
+07C6-11 00 00       1510 ( 10)                 LD DE,0
+07C9-2A 43 FF       1511 ( 16)                 LD HL, (ADRSINP)
+07CC-EB             1512 (  4)                 EX DE,HL     ;DE HOLDS END ADRESS
+07CD-C9             1513 ( 10)                 RET
+07CE-               1514
+07CE-0A 0D          1515       TBLSV1:  .DB $0A,$0D
+07D0-53 2D 53 74 
+     61 72 74 20    1516                        .DB "S-Start "
+07D8-24 3F 08       1517                        .DB "$?",$08
+07DB-               1518
+07DB-0A 0D          1519       TBLSV2:  .DB $0A,$0D
+07DD-53 2D 45 6E 
+     64 20 20 20    1520                        .DB "S-End   "
+07E5-24 3F 08       1521                        .DB "$?",$08
+07E8-               1522
+07E8-               1523       ;-------------save end----------------
+07E8-               1524
+07E8-               1525       ;------------------INPUT--------------------------------
+07E8-               1526       ;INPUT DONT CHANGES ANY REGISTER!!!
+07E8-               1527       ;1 BYTE RESULT AT: DATAINP
+07E8-               1528       ;2 BYTE RESULT AT: ADRSINP-3F44H
+07E8-               1529
+07E8-               1530
+07E8-               1531       BYTEIN2:
+07E8-F5             1532 ( 11)                 PUSH AF
+07E9-E5             1533 ( 11)                 PUSH HL
+07EA-C5             1534 ( 11)                 PUSH BC
+07EB-D5             1535 ( 11)                 PUSH DE
+07EC-21 20 FF       1536 ( 10)                 LD HL, KEYINBUF  ;4 CHAR ADRESS INPUT
+07EF-06 04          1537 (  7)                 LD B,4
+07F1-CD 48 00       1538 ( 17) DIS25:  CALL RXD
+07F4-FE 1B          1539 (  7)                 CP $1B
+07F6-CA 72 00       1540 ( 10)                 JP Z,MA_IN
+07F9-C3 55 08       1541 ( 10)                 JP CHECKHEX    ;CHECK IF A VALID HEX CHAR
+07FC-               1542       HEXCON2:
+07FC-77             1543 (  7)                 LD (HL), A
+07FD-23             1544 (  6)                 INC HL
+07FE-CD 3C 00       1545 ( 17)                 CALL TXD  ;PRINT NIBBLE
+0801-10 EE          1546 ( 8+)                 DJNZ DIS25  ;GET 4 NIBBLE FROM KEYINBUF TO 3F23H
+0803-CD 07 09       1547 ( 17)                 CALL INTLINR  ;
+0806-2A 40 FF       1548 ( 16)                 LD HL,(KEYINRES)
+0809-22 43 FF       1549 ( 20)                 LD (ADRSINP),HL ; TWO BYTES ADRESS AT 3F43(High), AND 3F44(Low)
+080C-D1             1550 ( 10)                 POP DE
+080D-C1             1551 ( 10)                 POP BC
+080E-E1             1552 ( 10)                 POP HL
+080F-F1             1553 ( 10)                 POP AF
+0810-C9             1554 ( 10)                 RET
+0811-               1555
+0811-               1556
+0811-               1557       BYTEIN1:
+0811-F5             1558 ( 11)                 PUSH AF
+0812-E5             1559 ( 11)                 PUSH HL
+0813-C5             1560 ( 11)                 PUSH BC
+0814-D5             1561 ( 11)                 PUSH DE
+0815-21 20 FF       1562 ( 10)                 LD HL, KEYINBUF + 2 ;2 CHAR DATA INPUT
+0818-06 02          1563 (  7)                 LD B,2
+081A-CD 48 00       1564 ( 17) DIS26:  CALL RXD
+081D-FE 1B          1565 (  7)                 CP $1B
+081F-CA 72 00       1566 ( 10)                 JP Z,MA_IN
+0822-C3 3A 08       1567 ( 10)                 JP CHECKHEX2
+0825-               1568
+0825-               1569       HEXCON3:
+0825-               1570
+0825-77             1571 (  7)                 LD (HL), A
+0826-23             1572 (  6)                 INC HL
+0827-CD 3C 00       1573 ( 17)                 CALL TXD   ;PRINT NIBBLE
+082A-10 EE          1574 ( 8+)                 DJNZ DIS26
+082C-CD 11 09       1575 ( 17)                 CALL INLIN2
+082F-3A 40 FF       1576 ( 13)                 LD A,(KEYINRES)
+0832-32 42 FF       1577 ( 13)                 LD (DATAINP),A ;1 BYTE INPUT: RESULT IN 3F42
+0835-               1578
+0835-D1             1579 ( 10)                 POP DE
+0836-C1             1580 ( 10)                 POP BC
+0837-E1             1581 ( 10)                 POP HL
+0838-F1             1582 ( 10)                 POP AF
+0839-C9             1583 ( 10)                 RET
+083A-               1584
+083A-               1585
+083A-               1586       ;---------------------------------
+083A-               1587       ;-------------------------1 BYTE CHECK IF HEX------
+083A-               1588       CHECKHEX2:      ;CHECK IF INPUT IS A REAL HEX VALUE FOR 1 BYTE INPUT
+083A-E5             1589 ( 11)                 PUSH HL
+083B-F5             1590 ( 11)                 PUSH AF
+083C-C5             1591 ( 11)                 PUSH BC
+083D-21 63 0A       1592 ( 10)                 LD HL, TABLEX   ;HEX CHAR TABLE
+0840-06 10          1593 (  7)                 LD B,16
+0842-               1594       DONHEXX2:
+0842-BE             1595 (  7)                 CP (HL)
+0843-CA 4F 08       1596 ( 10)                 JP Z,OKHEX2     ;FINDED A VALID HEX CHAR, RETURN TO CONTINUE
+0846-23             1597 (  6)                 INC HL
+0847-10 F9          1598 ( 8+)                 DJNZ DONHEXX2
+0849-               1599
+0849-C1             1600 ( 10) NOTHEX2: POP BC
+084A-F1             1601 ( 10)                 POP AF
+084B-E1             1602 ( 10)                 POP HL
+084C-C3 1A 08       1603 ( 10)                 JP DIS26
+084F-               1604
+084F-               1605
+084F-               1606       OKHEX2:
+084F-C1             1607 ( 10)                 POP BC
+0850-F1             1608 ( 10)                 POP AF
+0851-E1             1609 ( 10)                 POP HL
+0852-C3 25 08       1610 ( 10)                 JP HEXCON3      ;CONTINUE TO WRITE INPUT PROCESS
+0855-               1611       ;--1 BYTE CHECK FINISHED
+0855-               1612
+0855-               1613       CHECKHEX:       ;CHECK IF INPUT IS A REAL HEX VALUE FOR 2 BYTE INPUT
+0855-E5             1614 ( 11)                 PUSH HL
+0856-F5             1615 ( 11)                 PUSH AF
+0857-C5             1616 ( 11)                 PUSH BC
+0858-21 63 0A       1617 ( 10)                 LD HL, TABLEX   ;HEX CHAR TABLE
+085B-06 10          1618 (  7)                 LD B,16
+085D-               1619       DONHEXX:
+085D-BE             1620 (  7)                 CP (HL)
+085E-CA 6A 08       1621 ( 10)                 JP Z,OKHEX      ;FINDED A VALID HEX CHAR, RETURN TO CONTINUE
+0861-23             1622 (  6)                 INC HL
+0862-10 F9          1623 ( 8+)                 DJNZ DONHEXX
+0864-               1624
+0864-C1             1625 ( 10) NOTHEX: POP BC
+0865-F1             1626 ( 10)                 POP AF
+0866-E1             1627 ( 10)                 POP HL
+0867-C3 F1 07       1628 ( 10)                 JP DIS25
+086A-               1629
+086A-               1630
+086A-C1             1631 ( 10) OKHEX:  POP BC
+086B-F1             1632 ( 10)                 POP AF
+086C-E1             1633 ( 10)                 POP HL
+086D-C3 FC 07       1634 ( 10)                 JP HEXCON2      ;CONTINUE TO WRITE INPUT PROCESS
+0870-               1635       ;--2 BYTE CHECK FINISHED
+0870-               1636
+0870-               1637
+0870-               1638
+0870-               1639
+0870-               1640       ;--------------------EDIT------------------------------
+0870-               1641
+0870-21 D9 08       1642 ( 10) EDIT:   LD HL,TABLEDIT  ;EDIT MESSAGE
+0873-06 0E          1643 (  7)                 LD B,14
+0875-CD BA 01       1644 ( 17)                 CALL PRINT
+0878-               1645
+0878-               1646
+0878-               1647
+0878-CD E8 07       1648 ( 17)                 CALL BYTEIN2   ;GET ADRESS TO EDIT
+087B-3E 0A          1649 (  7)                 LD A,$0A
+087D-CD 3C 00       1650 ( 17)                 CALL TXD
+0880-3E 0D          1651 (  7)                 LD A,$0D
+0882-CD 3C 00       1652 ( 17)                 CALL TXD
+0885-2A 43 FF       1653 ( 16)                 LD HL,(ADRSINP)
+0888-22 06 F9       1654 ( 20)                 LD (EDITADR),HL
+088B-               1655
+088B-               1656       DONEDIT:
+088B-3E 0A          1657 (  7)                 LD A,$0A
+088D-CD 3C 00       1658 ( 17)                 CALL TXD
+0890-3E 0D          1659 (  7)                 LD A,$0D
+0892-CD 3C 00       1660 ( 17)                 CALL TXD
+0895-3E 45          1661 (  7)                 LD A,'E'
+0897-CD 3C 00       1662 ( 17)                 CALL TXD
+089A-3E 2D          1663 (  7)                 LD A,'-'
+089C-CD 3C 00       1664 ( 17)                 CALL TXD
+089F-               1665
+089F-               1666
+089F-               1667
+089F-2A 06 F9       1668 ( 16)                 LD HL,(EDITADR) ;PRINT INPUT ADRESS
+08A2-7C             1669 (  4)                 LD A,H
+08A3-CD 37 0A       1670 ( 17)                 CALL HEXOUT
+08A6-7D             1671 (  4)                 LD A,L
+08A7-CD 37 0A       1672 ( 17)                 CALL HEXOUT
+08AA-               1673
+08AA-3E 3A          1674 (  7)                 LD A,':'
+08AC-CD 3C 00       1675 ( 17)                 CALL TXD
+08AF-3E 20          1676 (  7)                 LD A,' '
+08B1-CD 3C 00       1677 ( 17)                 CALL TXD
+08B4-               1678
+08B4-7E             1679 (  7)                 LD A,(HL)
+08B5-CD 37 0A       1680 ( 17)                 CALL HEXOUT     ;PRINT EDITING ADRESS CONTENT
+08B8-               1681
+08B8-3E 08          1682 (  7)                 LD A,$08
+08BA-CD 3C 00       1683 ( 17)                 CALL TXD
+08BD-3E 08          1684 (  7)                 LD A,$08
+08BF-CD 3C 00       1685 ( 17)                 CALL TXD        ;CURSOR 2 CHAR BACK
+08C2-               1686
+08C2-               1687
+08C2-               1688
+08C2-CD 11 08       1689 ( 17)                 CALL BYTEIN1
+08C5-CD AF 01       1690 ( 17)                 CALL DE_LAY
+08C8-               1691
+08C8-3A 42 FF       1692 ( 13)                 LD A,(DATAINP)
+08CB-2A 06 F9       1693 ( 16)                 LD HL,(EDITADR)
+08CE-77             1694 (  7)                 LD (HL),A
+08CF-               1695
+08CF-               1696       EDITNEXT:
+08CF-23             1697 (  6)                 INC HL
+08D0-22 06 F9       1698 ( 20)                 LD (EDITADR),HL
+08D3-C3 8B 08       1699 ( 10)                 JP DONEDIT
+08D6-               1700
+08D6-               1701
+08D6-               1702
+08D6-C3 CF 08       1703 ( 10)                 JP EDITNEXT
+08D9-               1704
+08D9-               1705
+08D9-               1706
+08D9-               1707
+08D9-               1708
+08D9-               1709
+08D9-               1710
+08D9-               1711
+08D9-               1712
+08D9-               1713       TABLEDIT:
+08D9-45 64 69 74 
+     20 6D 65 6D 
+     6F 72 79 20 
+     3A             1714                        .DB "Edit memory :"
+08E6-24             1715                        .DB "$"
+08E7-               1716
+08E7-               1717
+08E7-               1718       ;------------------GO TO ADRESS-(RUN)----------------------
+08E7-               1719
+08E7-               1720
+08E7-               1721
+08E7-               1722       RUN_ADR:
+08E7-3E 47          1723 (  7)                 LD A,'G'
+08E9-CD 3C 00       1724 ( 17)                 CALL TXD
+08EC-3E 2D          1725 (  7)                 LD A,'-'
+08EE-CD 3C 00       1726 ( 17)                 CALL TXD
+08F1-3E 24          1727 (  7)                 LD A, '$'
+08F3-CD 3C 00       1728 ( 17)                 CALL TXD
+08F6-3E 3F          1729 (  7)                 LD A, '?'
+08F8-CD 3C 00       1730 ( 17)                 CALL TXD
+08FB-3E 08          1731 (  7)                 LD A, $08
+08FD-CD 3C 00       1732 ( 17)                 CALL TXD ; DISPLAY 4 CHAR INPUT PROMPT
+0900-CD E8 07       1733 ( 17)                 CALL BYTEIN2
+0903-2A 43 FF       1734 ( 16)                 LD HL, (ADRSINP)
+0906-E9             1735 (  4)                 JP (HL)
+0907-               1736
+0907-               1737
+0907-               1738
+0907-               1739       ;----------------INPUT HEX TO BYTE CONVERTER 2 BYTE OR 1 BYTE---------
+0907-               1740       INTLINR:                   ;4 NIBBLE  INPUT
+0907-21 20 FF       1741 ( 10)                 LD HL, KEYINBUF -1 ;
+090A-7E             1742 (  7)                 LD A,(HL)
+090B-CD 1C 09       1743 ( 17)                 CALL BYTERDR
+090E-32 41 FF       1744 ( 13)                 LD (KEYINRES+1),A
+0911-               1745
+0911-21 20 FF       1746 ( 10) INLIN2: LD HL, KEYINBUF + 1       ;2 NIBBLE INPUT
+0914-7E             1747 (  7)                 LD A,(HL)
+0915-CD 1C 09       1748 ( 17)                 CALL BYTERDR
+0918-32 40 FF       1749 ( 13)                 LD (KEYINRES),A
+091B-C9             1750 ( 10)                 RET
+091C-               1751
+091C-               1752
+091C-               1753       BYTERDR:
+091C-               1754
+091C-16 00          1755 (  7)                 LD      D,$00           ;Set up   ;     * Get 2 ASCII chrs as hex byte  *
+091E-CD 26 09       1756 ( 17)                 CALL HEXCONR            ;Get byte and convert to hex
+0921-87             1757 (  4)                 ADD     A,A             ;First nibble so
+0922-87             1758 (  4)                 ADD     A,A             ;multiply by 16
+0923-87             1759 (  4)                 ADD     A,A             ;
+0924-87             1760 (  4)                 ADD     A,A             ;
+0925-57             1761 (  4)                 LD      D,A             ;Save hi nibble in D
+0926-               1762       HEXCONR:
+0926-               1763
+0926-23             1764 (  6)                 INC HL                ;HL:FF21
+0927-               1765
+0927-7E             1766 (  7)                 LD A, (HL)
+0928-               1767
+0928-               1768                       ;CALL   RXD             ;Get next chr
+0928-D6 30          1769 (  7)                 SUB     $30             ;Makes '0'-'9' equal 0-9
+092A-FE 0A          1770 (  7)                 CP      $0A             ;Is it 0-9 ?
+092C-38 02          1771 ( 7+)                 JR      C,NALPHAR       ;If so miss next bit
+092E-D6 07          1772 (  7)                 SUB     $07             ;Else convert alpha
+0930-               1773       NALPHAR:
+0930-B2             1774 (  4)                 OR      D               ;Add hi nibble back
+0931-C9             1775 ( 10)                 RET                     ;RESULT STORED IN A REGISTER!
+0932-               1776
+0932-               1777
+0932-               1778
+0932-               1779       ;---------------LOAD HEX FILE ROUTINE
+0932-               1780
+0932-               1781       LOADERZ:
+0932-               1782
+0932-               1783
+0932-21 ED 0A       1784 ( 10)                 LD HL,TABLE25         ;LOADING.. MSG
+0935-06 0F          1785 (  7)                 LD B,15   ; DECIMAL IF NOT H AT THE END
+0937-CD BA 01       1786 ( 17)                 CALL PRINT
+093A-               1787
+093A-CD 67 09       1788 ( 17)                 CALL INTLIN1
+093D-               1789
+093D-               1790
+093D-               1791       LOAD_ED:                      ; FILE LOADED MESAGE
+093D-21 DE 0A       1792 ( 10)                 LD HL,TABLE2
+0940-06 0F          1793 (  7)                 LD B, 15
+0942-CD BA 01       1794 ( 17)                 CALL PRINT
+0945-               1795
+0945-3E 24          1796 (  7)                 LD A,'$'
+0947-CD 3C 00       1797 ( 17)                 CALL TXD
+094A-               1798
+094A-2A 50 FF       1799 ( 16)                 LD HL,(LOADSTADR)  ;DOWNLOADED FILE START ADRESS
+094D-7C             1800 (  4)                 LD A,H
+094E-CD 37 0A       1801 ( 17)                 CALL HEXOUT
+0951-7D             1802 (  4)                 LD A,L
+0952-CD 37 0A       1803 ( 17)                 CALL HEXOUT
+0955-               1804
+0955-3E 0A          1805 (  7)                 LD A,$0A
+0957-CD 3C 00       1806 ( 17)                 CALL TXD
+095A-3E 0D          1807 (  7)                 LD A,$0D
+095C-CD 3C 00       1808 ( 17)                 CALL TXD
+095F-3E 07          1809 (  7)                 LD A,$07
+0961-CD 3C 00       1810 ( 17)                 CALL TXD
+0964-               1811
+0964-C3 72 00       1812 ( 10)                 JP MA_IN
+0967-               1813
+0967-               1814
+0967-               1815
+0967-               1816       ;       *********************************
+0967-               1817       ;       *                               *
+0967-               1818       ;       *     Get Intel hex record      *
+0967-               1819       ;       *                               *
+0967-               1820       ;       *********************************
+0967-               1821
+0967-               1822       ;Short version - no checksum calculation.
+0967-               1823
+0967-               1824       INTLIN1:
+0967-3E 00          1825 (  7)                 LD A,$00
+0969-32 4B FF       1826 ( 13)                 LD (HEXLDREG),A
+096C-CD 48 00       1827 ( 17) INTLIN: CALL    RXD             ;Get chr
+096F-FE 1B          1828 (  7)                 CP  $1B
+0971-C8             1829 ( 5+)                 RET Z
+0972-FE 3A          1830 (  7)                 CP      ':'             ;Is it ':'?
+0974-20 F6          1831 ( 7+)                 JR      NZ,INTLIN       ;If not then next
+0976-CD A2 09       1832 ( 17)                 CALL    BYTERD          ;Get record length
+0979-47             1833 (  4)                 LD      B,A             ;Put in B
+097A-CD A2 09       1834 ( 17)                 CALL    BYTERD          ;Get record address hi byte
+097D-67             1835 (  4)                 LD      H,A             ;Put in H
+097E-CD A2 09       1836 ( 17)                 CALL    BYTERD          ;Get record address lo byte
+0981-6F             1837 (  4)                 LD      L,A             ;Put in L
+0982-               1838
+0982-3A 4B FF       1839 ( 13)                 LD A,(HEXLDREG)         ;CHECK IF HL RECORDED TO DISPLAY SOURCE ADRESS BEFORE?
+0985-FE 01          1840 (  7)                 CP $01                   ;IF NOT, RECORD IT. OTHERWISE GO ON
+0987-CA 92 09       1841 ( 10)                 JP Z,GO_ON
+098A-3E 01          1842 (  7)                 LD A,$01
+098C-32 4B FF       1843 ( 13)                 LD (HEXLDREG),A
+098F-22 50 FF       1844 ( 20)                 LD (LOADSTADR),HL       ; LOADED PROGRAM START ADRESS HEADER REGISTER
+0992-               1845
+0992-CD A2 09       1846 ( 17) GO_ON:  CALL BYTERD             ;Record type(NOT IGNORED IN EFEX MON)
+0995-FE 01          1847 (  7)                 CP $01                   ;IF END OF FILE THEN EXIT PROGRAM
+0997-C8             1848 ( 5+)                 RET Z          ;JP Z,LOAD_ED        PROGRAM ENDED RETURN TO HOME
+0998-               1849
+0998-               1850
+0998-CD A2 09       1851 ( 17) DATAIN: CALL    BYTERD          ;Get record data byte
+099B-77             1852 (  7)                 LD      (HL),A          ;Save byte to memory
+099C-23             1853 (  6)                 INC     HL              ;Next address
+099D-10 F9          1854 ( 8+)                 DJNZ    DATAIN          ;Decrement count and jump if not finished
+099F-18 CB          1855 ( 12)                 JR      INTLIN          ;Ignore checksum byte and [CR][LF]
+09A1-               1856
+09A1-C9             1857 ( 10)                 RET             ;PROGRAM ENDED RETURN HOME
+09A2-               1858
+09A2-16 00          1859 (  7) BYTERD: LD      D,$00           ;Set up   ;     * Get 2 ASCII chrs as hex byte  *
+09A4-CD AC 09       1860 ( 17)                 CALL    HEXCON          ;Get byte and convert to hex
+09A7-87             1861 (  4)                 ADD     A,A             ;First nibble so
+09A8-87             1862 (  4)                 ADD     A,A             ;multiply by 16
+09A9-87             1863 (  4)                 ADD     A,A             ;
+09AA-87             1864 (  4)                 ADD     A,A             ;
+09AB-57             1865 (  4)                 LD      D,A             ;Save hi nibble in D
+09AC-CD 48 00       1866 ( 17) HEXCON: CALL    RXD             ;Get next chr
+09AF-D6 30          1867 (  7)                 SUB     $30             ;Makes '0'-'9' equal 0-9
+09B1-FE 0A          1868 (  7)                 CP      $0A             ;Is it 0-9 ?
+09B3-38 02          1869 ( 7+)                 JR      C,NALPHA        ;If so miss next bit
+09B5-D6 07          1870 (  7)                 SUB     $07             ;Else convert alpha
+09B7-B2             1871 (  4) NALPHA: OR      D               ;Add hi nibble back
+09B8-C9             1872 ( 10)                 RET                     ;
+09B9-               1873
+09B9-               1874       ;-------------------------Hex load finished-----------------
+09B9-               1875
+09B9-               1876       ;--------------------------INTEL HEX SAVE ROUTINE
+09B9-               1877       ;,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+09B9-               1878       ;INTEL HEX SAVE PROGRAM         ;
+09B9-               1879       ;,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+09B9-               1880       ;       LD HL,START ADRESS
+09B9-               1881       ;       LD DE, END ADRESS
+09B9-               1882
+09B9-               1883       INTSAVE:
+09B9-E5             1884 ( 11)                 PUSH HL
+09BA-EB             1885 (  4)                 EX DE,HL
+09BB-ED 52          1886 ( 15)                 SBC HL,DE
+09BD-EB             1887 (  4)                 EX DE,HL
+09BE-E1             1888 ( 10)                 POP HL
+09BF-3E 00          1889 (  7)                 LD A,$00
+09C1-32 34 FF       1890 ( 13)                 LD (SAVECHCK),A ;RESET CHECKSUM COUNTER
+09C4-06 10          1891 (  7)                 LD B,$10
+09C6-               1892
+09C6-3E 0D          1893 (  7)                 LD A,$0D                ;ENTER
+09C8-CD 3C 00       1894 ( 17)                 CALL TXD ;TXD ROUTINE
+09CB-3E 0A          1895 (  7)                 LD A,$0A
+09CD-CD 3C 00       1896 ( 17)                 CALL TXD ;TXD ROUTINE
+09D0-               1897
+09D0-7A             1898 (  4) COMP:   LD A,D  ; DE TEK BAYTA INMIS
+09D1-FE 00          1899 (  7)                 CP 0
+09D3-CA D9 09       1900 ( 10)                 JP Z,MINUS
+09D6-C3 E6 09       1901 ( 10)                 JP DONGU
+09D9-               1902
+09D9-7B             1903 (  4) MINUS:  LD A,E      ;E 10H TAN KUCUKSE..
+09DA-D6 10          1904 (  7)                 SUB $10
+09DC-DA E2 09       1905 ( 10)                 JP C,MINIMUS
+09DF-C3 E6 09       1906 ( 10)                 JP DONGU
+09E2-               1907
+09E2-43             1908 (  4) MINIMUS: LD B,E    ;DE 10H TAN AZ
+09E3-C3 E8 09       1909 ( 10)                 JP DONGU1
+09E6-               1910
+09E6-06 10          1911 (  7) DONGU:  LD B,$10
+09E8-3E 3A          1912 (  7) DONGU1: LD A,':'
+09EA-CD 3C 00       1913 ( 17)                 CALL TXD ;TXD ROUTINE           ;SEND START CODE
+09ED-78             1914 (  4)                 LD A,B
+09EE-CD 37 0A       1915 ( 17)                 CALL HEXOUT             ;SEND BYTE COUNT (DEFAULT 16)
+09F1-               1916
+09F1-7C             1917 (  4)                 LD A,H                  ;SEND RECORD ADRESS
+09F2-CD 37 0A       1918 ( 17)                 CALL HEXOUT
+09F5-7D             1919 (  4)                 LD A,L
+09F6-CD 37 0A       1920 ( 17)                 CALL HEXOUT
+09F9-               1921
+09F9-3E 00          1922 (  7)                 LD A,0                  ;SEND RECORD TYPE (0=DATA)
+09FB-CD 37 0A       1923 ( 17)                 CALL HEXOUT
+09FE-               1924
+09FE-CD 1F 0A       1925 ( 17)                 CALL YAZ
+0A01-7A             1926 (  4)                 LD A,D          ;DE BYTE COUNT REACHED?
+0A02-B3             1927 (  4)                 OR E
+0A03-C2 D0 09       1928 ( 10)                 JP NZ,COMP
+0A06-               1929
+0A06-3E 3A          1930 (  7)                 LD A,':'                ;ENDING COLON
+0A08-CD 3C 00       1931 ( 17)                 CALL TXD ;TXD ROUTINE
+0A0B-06 07          1932 (  7)                 LD B,$07
+0A0D-3E 30          1933 (  7) DISEND: LD A,'0'
+0A0F-CD 3C 00       1934 ( 17)                 CALL TXD ;TXD ROUTINE
+0A12-10 F9          1935 ( 8+)                 DJNZ DISEND
+0A14-3E 31          1936 (  7)                 LD A,'1'
+0A16-CD 3C 00       1937 ( 17)                 CALL TXD ;TXD ROUTINE
+0A19-3E FF          1938 (  7)                 LD A,$FF
+0A1B-CD 37 0A       1939 ( 17)                 CALL HEXOUT
+0A1E-               1940
+0A1E-C9             1941 ( 10)                 RET      ;PROGRAM ENDED    CALL RE_START        RESET DISPLAYS
+0A1F-               1942                                       ;JP MA_IN       ;TURN INTO ROM
+0A1F-               1943
+0A1F-               1944
+0A1F-               1945
+0A1F-               1946
+0A1F-               1947
+0A1F-7E             1948 (  7) YAZ:    LD A,(HL)
+0A20-CD 37 0A       1949 ( 17)                 CALL HEXOUT
+0A23-23             1950 (  6)                 INC HL
+0A24-1B             1951 (  6)                 DEC DE
+0A25-10 F8          1952 ( 8+)                 DJNZ YAZ                ;16 BYTES SENDED
+0A27-3E FF          1953 (  7)                 LD A, $FF               ;SEND FAKE CHECKSUM
+0A29-CD 37 0A       1954 ( 17)                 CALL HEXOUT
+0A2C-               1955
+0A2C-3E 0D          1956 (  7)                 LD A,$0D                ;ENTER
+0A2E-CD 3C 00       1957 ( 17)                 CALL TXD ;TXD ROUTINE
+0A31-3E 0A          1958 (  7)                 LD A,$0A
+0A33-CD 3C 00       1959 ( 17)                 CALL TXD ;TXD ROUTINE
+0A36-C9             1960 ( 10)                 RET
+0A37-               1961
+0A37-               1962       ;------------------------------SAVE FINISHED
+0A37-               1963
+0A37-               1964
+0A37-               1965
+0A37-               1966
+0A37-               1967       ;----------------------HEXOUT--------------------------------------------
+0A37-               1968
+0A37-               1969
+0A37-               1970
+0A37-               1971       ;HEXOUT DO NOT CHANGES ANY REGISTER
+0A37-C5             1972 ( 11) HEXOUT: PUSH BC ; THIS SUBROUTINE SENDS CONTENTS OF ACC TO TERMINAL AS
+0A38-D5             1973 ( 11)                 PUSH DE ; TWO CHAR HEX VALUE (ASCII)
+0A39-E5             1974 ( 11)                 PUSH HL
+0A3A-F5             1975 ( 11)                 PUSH AF
+0A3B-               1976
+0A3B-E6 F0          1977 (  7)                 AND $F0
+0A3D-1F             1978 (  4)                 RRA
+0A3E-1F             1979 (  4)                 RRA
+0A3F-1F             1980 (  4)                 RRA
+0A40-1F             1981 (  4)                 RRA
+0A41-32 33 FF       1982 ( 13)                 LD (HIGHNIBBLE),A  ;HIGH NIBBLE SYSTEM VARIABLE
+0A44-CD 56 0A       1983 ( 17)                 CALL HEXAS
+0A47-               1984
+0A47-F1             1985 ( 10)                 POP AF
+0A48-F5             1986 ( 11)                 PUSH AF
+0A49-E6 0F          1987 (  7)                 AND $0F
+0A4B-32 32 FF       1988 ( 13)                 LD (LOWNIBBLE),A  ;LOW NIBBLE SYSTEM VARIABLE
+0A4E-CD 56 0A       1989 ( 17)                 CALL HEXAS
+0A51-               1990
+0A51-F1             1991 ( 10)                 POP AF
+0A52-E1             1992 ( 10)                 POP HL
+0A53-D1             1993 ( 10)                 POP DE
+0A54-C1             1994 ( 10)                 POP BC
+0A55-               1995
+0A55-C9             1996 ( 10)                 RET
+0A56-               1997
+0A56-21 63 0A       1998 ( 10) HEXAS:  LD HL, TABLEX ; HEX NIBBLE TO ASCII CONVERTER
+0A59-06 00          1999 (  7)                 LD  B, 0        ;ADDING HL WITH A
+0A5B-4F             2000 (  4)                 LD  C, A
+0A5C-ED 4A          2001 ( 15)                 ADC HL, BC
+0A5E-7E             2002 (  7)                 LD A,(HL)
+0A5F-CD 3C 00       2003 ( 17)                 CALL TXD ;TXD ROUTINE
+0A62-C9             2004 ( 10)                 RET
+0A63-30 31 32 33 
+     34 35 36 37    2005       TABLEX:  .DB '0','1','2','3','4','5','6','7'
+0A6B-38 39 41 42 
+     43 44 45 46    2006                        .DB '8','9','A','B','C','D','E','F'
+0A73-               2007
+0A73-               2008
+0A73-               2009       ;HEXOUT DO NOT CHANGES ANY REGISTER
+0A73-               2010
+0A73-               2011       TABLE28:
+0A73-0A 0D          2012                        .DB $0A,$0D
+0A75-45 4E 54 45 
+     52 20 41 44 
+     3A             2013                        .DB "ENTER AD:"
+0A7E-               2014       TABLE29:
+0A7E-0A 0D          2015                        .DB $0A,$0D
+0A80-45 4E 54 45 
+     52 20 44 54 
+     3A             2016                        .DB "ENTER DT:"
+0A89-               2017
+0A89-0C 0D          2018       TABLE:   .DB $0C,$0D
+0A8B-45 66 65 78 
+     4D 6F 6E 20    2019                        .DB "EfexMon "
+0A93-42 79 20 4D 
+     2E 50 45 4B 
+     45 52 20       2020                        .DB "By M.PEKER "
+0A9E-76 31 2E 30 
+     62             2021                        .DB "v1.0b"
+0AA3-               2022
+0AA3-0A 0D          2023                        .DB $0A,$0D
+0AA5-50 72 65 73 
+     73 20 48 20    2024                        .DB "Press H "
+0AAD-66 6F 72 20 
+     68 65 6C 70    2025                        .DB "for help"
+0AB5-0A 0D          2026                        .DB $0A,$0D
+0AB7-0A 0D          2027                .DB $0A,$0D
+0AB9-52 65 61 64 
+     79 2E          2028                        .DB "Ready."
+0ABF-0A 0D          2029                        .DB $0A,$0D
+0AC1-07             2030                        .DB $07
+0AC2-               2031
+0AC2-               2032
+0AC2-               2033       TABLE13:
+0AC2-0A 0D 07       2034                        .DB $0A,$0D,$07
+0AC5-50 72 65 73 
+     73 20          2035                        .DB "Press "
+0ACB-61 6E 79 20 
+     6B 65 79 20    2036                        .DB "any key "
+0AD3-74 6F 20 73 
+     65 6E 64 20 
+     21             2037                        .DB "to send !"
+0ADC-0A 0D          2038                        .DB $0A,$0D
+0ADE-               2039
+0ADE-               2040
+0ADE-               2041
+0ADE-               2042
+0ADE-0D             2043       TABLE2:  .DB $0D
+0ADF-6C 6F 61 64 
+     65 64 20       2044                        .DB "loaded "
+0AE6-61 64 72 65 
+     73 73 3A       2045                        .DB "adress:"
+0AED-               2046
+0AED-               2047       TABLE25:
+0AED-0D             2048                        .DB $0D
+0AEE-48 65 78 20 
+     4C 6F 61 64 
+     69 6E 67       2049                        .DB "Hex Loading"
+0AF9-2E 2E 2E       2050                        .DB "..."
+0AFC-               2051
+0AFC-               2052
+0AFC-               2053
+0AFC-               2054
+0AFC-0A 0D          2055       TABLE6:  .DB $0A,$0D
+0AFE-43 3A 3E       2056                        .DB "C:\>"
+0B01-               2057
+0B01-               2058       TABLE21:
+0B01-0A 0D          2059                        .DB $0A,$0D
+0B03-               2060
+0B03-               2061
+0B03-               2062
+0B03-41 2D          2063                        .DB "A-"
+0B05-41 73 73 65 
+     6D 62 6C 65 
+     72             2064                        .DB "Assembler"
+0B0E-0A 0D          2065                        .DB $0A,$0D
+0B10-               2066
+0B10-               2067
+0B10-44 2D          2068                        .DB "D-"
+0B12-44 69 73 61 
+     73 73 65 6D 
+     62 6C 65 72    2069                        .DB "Disassembler"
+0B1E-0A 0D          2070                        .DB $0A,$0D
+0B20-               2071
+0B20-               2072
+0B20-4C 2D 4C 6F 
+     61 64          2073                        .DB "L-Load"
+0B26-               2074
+0B26-0A 0D          2075                        .DB $0A,$0D
+0B28-               2076
+0B28-               2077
+0B28-53 2D 53 61 
+     76 65          2078                        .DB "S-Save"
+0B2E-               2079
+0B2E-0A 0D          2080                        .DB $0A,$0D
+0B30-               2081
+0B30-               2082
+0B30-45 2D 45 64 
+     69 74          2083                        .DB "E-Edit"
+0B36-               2084
+0B36-0A 0D          2085                        .DB $0A,$0D
+0B38-               2086
+0B38-               2087
+0B38-57 2D 57 61 
+     72 6D 73 74    2088                        .DB "W-Warmst"
+0B40-               2089
+0B40-0A 0D          2090                        .DB $0A,$0D
+0B42-               2091
+0B42-               2092
+0B42-4D 2D 4D 6F 
+     76 65          2093                        .DB "M-Move"
+0B48-0A 0D          2094                        .DB $0A,$0D
+0B4A-               2095
+0B4A-               2096
+0B4A-58 2D 48 65 
+     78 64 75 6D 
+     70             2097                        .DB "X-Hexdump"
+0B53-0A 0D          2098                        .DB $0A,$0D
+0B55-               2099
+0B55-               2100
+0B55-               2101
+0B55-47 2D 47 6F    2102                        .DB "G-Go"
+0B59-0A 0D          2103                        .DB $0A,$0D
+0B5B-               2104
+0B5B-46 2D 46 69 
+     6C 6C          2105                        .DB "F-Fill"
+0B61-0A 0D          2106                        .DB $0A,$0D
+0B63-               2107
+0B63-               2108
+0B63-55 2D 52 6F 
+     75 74 69 6E 
+     65 73          2109                        .DB "U-Routines"
+0B6D-               2110
+0B6D-0A 0D          2111                        .DB $0A,$0D
+0B6F-               2112
+0B6F-               2113
+0B6F-               2114       TABLEH10:
+0B6F-44 45 4C 41 
+     59 20 20 28 
+     53 29 3A 20 
+     20 24          2115                        .DB "DELAY  (S):  $"
+0B7D-               2116
+0B7D-               2117
+0B7D-               2118
+0B7D-               2119       TABLEH8:
+0B7D-50 52 4F 4D 
+     50 54 20 28 
+     52 29 3A 20 
+     20 24          2120                        .DB "PROMPT (R):  $"
+0B8B-               2121
+0B8B-               2122       TABLEH7:
+0B8B-               2123
+0B8B-20 41 20 2D 
+     3E 20 55 41 
+     52 54          2124                        .DB " A -> UART"
+0B95-0A 0D          2125                        .DB $0A,$0D
+0B97-               2126
+0B97-               2127       TABLEH6:
+0B97-               2128
+0B97-48 45 58 4F 
+     55 54 20 28 
+     53 29 3A 20 
+     20 24          2129                        .DB "HEXOUT (S):  $"
+0BA5-               2130
+0BA5-               2131
+0BA5-               2132
+0BA5-               2133       TABLEH5:
+0BA5-               2134
+0BA5-20 2D 3E 20 
+     46 46 34 32    2135                        .DB " -> FF42"
+0BAD-0A 0D          2136                        .DB $0A,$0D
+0BAF-               2137
+0BAF-               2138
+0BAF-               2139       TABLEH4:
+0BAF-42 59 54 45 
+     49 4E 31 28 
+     53 29 3A 20 
+     20 24          2140                        .DB "BYTEIN1(S):  $"
+0BBD-               2141
+0BBD-               2142       TABLEH3:
+0BBD-               2143
+0BBD-               2144
+0BBD-20 2D 3E 20 
+     46 46 34 33 
+     2D 46 46 34 
+     34             2145                        .DB " -> FF43-FF44"
+0BCA-0A 0D          2146                        .DB $0A,$0D
+0BCC-               2147
+0BCC-               2148       TABLEH2:            ;
+0BCC-42 59 54 45 
+     49 4E 32 28 
+     53 29 3A 20 
+     20 24          2149                        .DB "BYTEIN2(S):  $"
+0BDA-               2150
+0BDA-               2151       TABLEH1:
+0BDA-52 58 44 20 
+     20 20 20 28 
+     53 29 3A 20 
+     20 24          2152                        .DB "RXD    (S):  $"
+0BE8-               2153
+0BE8-               2154       TABLE22:
+0BE8-               2155
+0BE8-               2156
+0BE8-54 58 44 20 
+     20 20 20 28 
+     53 29 3A 20 
+     20 24          2157                        .DB "TXD    (S):  $"
+0BF6-               2158
+0BF6-               2159
+0BF6-               2160       ;--ASSEMBLER AND DISASSEMBLER OPERATES ON SAME TABLE
+0BF6-               2161       ;
+0BF6-               2162       ;
+0BF6-               2163       ;INSTRUCTION , VIRGUL, CODE COUNT,MACHINE CODE,OPERAND #-$-NULL, TOTAL BYTE COUNT
+0BF6-               2164       ;2CH VIRGUL DEMEK
+0BF6-               2165       ;BU ASSEMBLER  .DB DE VIRGUL KABUL ETMIYOR!!!
+0BF6-               2166
+0BF6-               2167
+0BF6-               2168       TABLECOD:
+0BF6-               2169
+0BF6-               2170
+0BF6-5F 41 44 43 
+     20 41 2C 28 
+     48 4C 29 01 
+     8E FF          2171                        .DB "_ADC A",$2C,"(HL)",1,$8E,$FF
+0C04-               2172
+0C04-5F 41 44 43 
+     20 41 2C 41 
+     01 8F FF       2173                        .DB "_ADC A",$2C,'A',1,$8F,$FF ;$FF IS NULL INDEX CODE TO FIND  COMMAND
+0C0F-5F 41 44 43 
+     20 41 2C 42 
+     01 88 FF       2174                        .DB "_ADC A",$2C,'B',1,$88,$FF ;'_' IS INDEX CHAR TO FIND MNEMONIC
+0C1A-5F 41 44 43 
+     20 41 2C 43 
+     01 89 FF       2175                        .DB "_ADC A",$2C,'C',1,$89,$FF
+0C25-5F 41 44 43 
+     20 41 2C 44 
+     01 8A FF       2176                        .DB "_ADC A",$2C,'D',1,$8A,$FF
+0C30-5F 41 44 43 
+     20 41 2C 45 
+     01 8B FF       2177                        .DB "_ADC A",$2C,'E',1,$8B,$FF
+0C3B-5F 41 44 43 
+     20 41 2C 48 
+     01 8C FF       2178                        .DB "_ADC A",$2C,'H',1,$8C,$FF
+0C46-5F 41 44 43 
+     20 41 2C 4C 
+     01 8D FF       2179                        .DB "_ADC A",$2C,'L',1,$8D,$FF
+0C51-5F 41 44 43 
+     20 41 2C 23 
+     01 CE FF       2180                        .DB "_ADC A",$2C,'#',1,$CE,$FF
+0C5C-               2181
+0C5C-               2182
+0C5C-5F 41 44 44 
+     20 41 2C 28 
+     48 4C 29 01 
+     86 FF          2183                        .DB "_ADD A",$2C,"(HL)",1,$86,$FF
+0C6A-               2184
+0C6A-5F 41 44 44 
+     20 41 2C 41 
+     01 87 FF       2185                        .DB "_ADD A",$2C,'A',1,$87,$FF
+0C75-5F 41 44 44 
+     20 41 2C 42 
+     01 80 FF       2186                        .DB "_ADD A",$2C,'B',1,$80,$FF
+0C80-5F 41 44 44 
+     20 41 2C 43 
+     01 81 FF       2187                        .DB "_ADD A",$2C,'C',1,$81,$FF
+0C8B-5F 41 44 44 
+     20 41 2C 44 
+     01 82 FF       2188                        .DB "_ADD A",$2C,'D',1,$82,$FF
+0C96-5F 41 44 44 
+     20 41 2C 45 
+     01 83 FF       2189                        .DB "_ADD A",$2C,'E',1,$83,$FF
+0CA1-5F 41 44 44 
+     20 41 2C 48 
+     01 84 FF       2190                        .DB "_ADD A",$2C,'H',1,$84,$FF
+0CAC-5F 41 44 44 
+     20 41 2C 4C 
+     01 85 FF       2191                        .DB "_ADD A",$2C,'L',1,$85,$FF
+0CB7-5F 41 44 44 
+     20 41 2C 23 
+     01 C6 FF       2192                        .DB "_ADD A",$2C,'#',1,$C6,$FF
+0CC2-5F 41 44 44 
+     20 48 4C 2C 
+     42 43 01 09 
+     FF             2193                        .DB "_ADD HL",$2C,"BC",1,$09,$FF
+0CCF-5F 41 44 44 
+     20 48 4C 2C 
+     44 45 01 19 
+     FF             2194                        .DB "_ADD HL",$2C,"DE",1,$19,$FF
+0CDC-5F 41 44 44 
+     20 48 4C 2C 
+     48 4C 01 29 
+     FF             2195                        .DB "_ADD HL",$2C,"HL",1,$29,$FF
+0CE9-5F 41 44 44 
+     20 48 4C 2C 
+     53 50 01 39 
+     FF             2196                        .DB "_ADD HL",$2C,"SP",1,$39,$FF
+0CF6-               2197
+0CF6-               2198
+0CF6-5F 41 4E 44 
+     20 28 48 4C 
+     29 01 A6 FF    2199                        .DB "_AND (HL)",1,$A6,$FF
+0D02-               2200
+0D02-5F 41 4E 44 
+     20 41 01 A7 
+     FF             2201                        .DB "_AND A",1,$A7,$FF
+0D0B-5F 41 4E 44 
+     20 42 01 A0 
+     FF             2202                        .DB "_AND B",1,$A0,$FF
+0D14-5F 41 4E 44 
+     20 43 01 A1 
+     FF             2203                        .DB "_AND C",1,$A1,$FF
+0D1D-5F 41 4E 44 
+     20 44 01 A2 
+     FF             2204                        .DB "_AND D",1,$A2,$FF
+0D26-5F 41 4E 44 
+     20 45 01 A3 
+     FF             2205                        .DB "_AND E",1,$A3,$FF
+0D2F-5F 41 4E 44 
+     20 48 01 A4 
+     FF             2206                        .DB "_AND H",1,$A4,$FF
+0D38-5F 41 4E 44 
+     20 4C 01 A5 
+     FF             2207                        .DB "_AND L",1,$A5,$FF
+0D41-5F 41 4E 44 
+     20 23 01 E6 
+     FF             2208                        .DB "_AND #",1,$E6,$FF
+0D4A-               2209
+0D4A-               2210
+0D4A-               2211
+0D4A-5F 43 41 4C 
+     4C 20 43 2C 
+     24 01 DC FF    2212                        .DB "_CALL C",$2C,'$',1,$DC,$FF
+0D56-5F 43 41 4C 
+     4C 20 4D 2C 
+     24 01 FC FF    2213                        .DB "_CALL M",$2C,'$',1,$FC,$FF
+0D62-5F 43 41 4C 
+     4C 20 4E 43 
+     2C 24 01 D4 
+     FF             2214                        .DB "_CALL NC",$2C,'$',1,$D4,$FF
+0D6F-5F 43 41 4C 
+     4C 20 4E 5A 
+     2C 24 01 C4 
+     FF             2215                        .DB "_CALL NZ",$2C,'$',1,$C4,$FF
+0D7C-5F 43 41 4C 
+     4C 20 50 2C 
+     24 01 F4 FF    2216                        .DB "_CALL P",$2C,'$',1,$F4,$FF
+0D88-5F 43 41 4C 
+     4C 20 50 45 
+     2C 24 01 EC 
+     FF             2217                        .DB "_CALL PE",$2C,'$',1,$EC,$FF
+0D95-5F 43 41 4C 
+     4C 20 50 4F 
+     2C 24 01 E4 
+     FF             2218                        .DB "_CALL PO",$2C,'$',1,$E4,$FF
+0DA2-5F 43 41 4C 
+     4C 20 5A 2C 
+     24 01 CC FF    2219                        .DB "_CALL Z",$2C,'$',1,$CC,$FF
+0DAE-5F 43 41 4C 
+     4C 20 24 01 
+     CD FF          2220                        .DB "_CALL $",1,$CD,$FF
+0DB8-               2221
+0DB8-5F 43 43 46 
+     01 3F FF       2222                        .DB "_CCF",1,$3F,$FF
+0DBF-               2223
+0DBF-5F 43 50 20 
+     28 48 4C 29 
+     01 BE FF       2224                        .DB "_CP (HL)",1,$BE,$FF
+0DCA-               2225
+0DCA-5F 43 50 20 
+     41 01 BF FF    2226                        .DB "_CP A",1,$BF,$FF
+0DD2-5F 43 50 20 
+     42 01 B8 FF    2227                        .DB "_CP B",1,$B8,$FF
+0DDA-5F 43 50 20 
+     43 01 B9 FF    2228                        .DB "_CP C",1,$B9,$FF
+0DE2-5F 43 50 20 
+     44 01 BA FF    2229                        .DB "_CP D",1,$BA,$FF
+0DEA-5F 43 50 20 
+     45 01 BB FF    2230                        .DB "_CP E",1,$BB,$FF
+0DF2-5F 43 50 20 
+     48 01 BC FF    2231                        .DB "_CP H",1,$BC,$FF
+0DFA-5F 43 50 20 
+     4C 01 BD FF    2232                        .DB "_CP L",1,$BD,$FF
+0E02-5F 43 50 20 
+     23 01 FE FF    2233                        .DB "_CP #",1,$FE,$FF
+0E0A-               2234
+0E0A-               2235
+0E0A-               2236
+0E0A-5F 43 50 4C 
+     01 2F FF       2237                        .DB "_CPL",1,$2F,$FF
+0E11-               2238
+0E11-5F 44 41 41 
+     01 27 FF       2239                        .DB "_DAA",1,$27,$FF
+0E18-               2240
+0E18-5F 44 45 43 
+     20 28 48 4C 
+     29 01 35 FF    2241                        .DB "_DEC (HL)",1,$35,$FF
+0E24-               2242
+0E24-5F 44 45 43 
+     20 41 01 3D 
+     FF             2243                        .DB "_DEC A",1,$3D,$FF
+0E2D-5F 44 45 43 
+     20 42 01 05 
+     FF             2244                        .DB "_DEC B",1,$05,$FF
+0E36-5F 44 45 43 
+     20 42 43 01 
+     0B FF          2245                        .DB "_DEC BC",1,$0B,$FF
+0E40-5F 44 45 43 
+     20 43 01 0D 
+     FF             2246                        .DB "_DEC C",1,$0D,$FF
+0E49-5F 44 45 43 
+     20 44 01 15 
+     FF             2247                        .DB "_DEC D",1,$15,$FF
+0E52-5F 44 45 43 
+     20 44 45 01 
+     1B FF          2248                        .DB "_DEC DE",1,$1B,$FF
+0E5C-5F 44 45 43 
+     20 45 01 1D 
+     FF             2249                        .DB "_DEC E",1,$1D,$FF
+0E65-5F 44 45 43 
+     20 48 01 25 
+     FF             2250                        .DB "_DEC H",1,$25,$FF
+0E6E-5F 44 45 43 
+     20 48 4C 01 
+     2B FF          2251                        .DB "_DEC HL",1,$2B,$FF
+0E78-               2252
+0E78-5F 44 45 43 
+     20 4C 01 2D 
+     FF             2253                        .DB "_DEC L",1,$2D,$FF
+0E81-5F 44 45 43 
+     20 53 50 01 
+     3B FF          2254                        .DB "_DEC SP",1,$3B,$FF
+0E8B-5F 44 49 01 
+     F3 FF          2255                        .DB "_DI",1,$F3,$FF
+0E91-5F 44 4A 4E 
+     5A 20 23 01 
+     10 FF          2256                        .DB "_DJNZ #",1,$10,$FF
+0E9B-               2257
+0E9B-5F 45 49 01 
+     FB FF          2258                        .DB "_EI",1,$FB,$FF
+0EA1-5F 45 58 20 
+     28 53 50 29 
+     2C 48 4C 01 
+     E3 FF          2259                        .DB "_EX (SP)",$2C,"HL",1,$E3,$FF
+0EAF-5F 45 58 20 
+     41 46 2C 41 
+     46 01 08 FF    2260                        .DB "_EX AF",$2C,"AF",1,$08,$FF
+0EBB-5F 45 58 20 
+     44 45 2C 48 
+     4C 01 EB FF    2261                        .DB "_EX DE",$2C,"HL",1,$EB,$FF
+0EC7-5F 45 58 58 
+     01 D9 FF       2262                        .DB "_EXX",1,$D9,$FF
+0ECE-               2263
+0ECE-5F 48 41 4C 
+     54 01 76 FF    2264                        .DB "_HALT",1,$76,$FF
+0ED6-               2265
+0ED6-               2266
+0ED6-               2267
+0ED6-               2268
+0ED6-               2269
+0ED6-5F 49 4E 20 
+     41 2C 28 23 
+     29 01 DB FF    2270                        .DB "_IN A",$2C,"(#)",1,$DB,$FF
+0EE2-               2271
+0EE2-               2272
+0EE2-5F 49 4E 43 
+     20 28 48 4C 
+     29 01 34 FF    2273                        .DB "_INC (HL)",1,$34,$FF
+0EEE-               2274
+0EEE-5F 49 4E 43 
+     20 41 01 3C 
+     FF             2275                        .DB "_INC A",1,$3C,$FF
+0EF7-5F 49 4E 43 
+     20 42 01 04 
+     FF             2276                        .DB "_INC B",1,$04,$FF
+0F00-5F 49 4E 43 
+     20 42 43 01 
+     03 FF          2277                        .DB "_INC BC",1,$03,$FF
+0F0A-5F 49 4E 43 
+     20 43 01 0C 
+     FF             2278                        .DB "_INC C",1,$0C,$FF
+0F13-5F 49 4E 43 
+     20 44 01 14 
+     FF             2279                        .DB "_INC D",1,$14,$FF
+0F1C-5F 49 4E 43 
+     20 44 45 01 
+     13 FF          2280                        .DB "_INC DE",1,$13,$FF
+0F26-5F 49 4E 43 
+     20 45 01 1C 
+     FF             2281                        .DB "_INC E",1,$1C,$FF
+0F2F-5F 49 4E 43 
+     20 48 01 24 
+     FF             2282                        .DB "_INC H",1,$24,$FF
+0F38-5F 49 4E 43 
+     20 48 4C 01 
+     23 FF          2283                        .DB "_INC HL",1,$23,$FF
+0F42-               2284
+0F42-5F 49 4E 43 
+     20 4C 01 2C 
+     FF             2285                        .DB "_INC L",1,$2C,$FF
+0F4B-5F 49 4E 43 
+     20 53 50 01 
+     33 FF          2286                        .DB "_INC SP",1,$33,$FF
+0F55-               2287
+0F55-5F 4A 52 20 
+     43 2C 23 01 
+     38 FF          2288                        .DB "_JR C",$2C,'#',1,$38,$FF
+0F5F-5F 4A 52 20 
+     4E 43 2C 23 
+     01 30 FF       2289                        .DB "_JR NC",$2C,'#',1,$30,$FF
+0F6A-5F 4A 52 20 
+     4E 5A 2C 23 
+     01 20 FF       2290                        .DB "_JR NZ",$2C,'#',1,$20,$FF
+0F75-5F 4A 52 20 
+     5A 2C 23 01 
+     28 FF          2291                        .DB "_JR Z",$2C,'#',1,$28,$FF
+0F7F-5F 4A 52 20 
+     23 01 18 FF    2292                        .DB "_JR #",1,$18,$FF
+0F87-               2293
+0F87-               2294
+0F87-               2295
+0F87-5F 4A 50 20 
+     28 48 4C 29 
+     01 E9 FF       2296                        .DB "_JP (HL)",1,$E9,$FF
+0F92-               2297
+0F92-5F 4A 50 20 
+     43 2C 24 01 
+     DA FF          2298                        .DB "_JP C",$2C,'$',1,$DA,$FF
+0F9C-5F 4A 50 20 
+     4D 2C 24 01 
+     FA FF          2299                        .DB "_JP M",$2C,'$',1,$FA,$FF
+0FA6-5F 4A 50 20 
+     4E 43 2C 24 
+     01 D2 FF       2300                        .DB "_JP NC",$2C,'$',1,$D2,$FF
+0FB1-5F 4A 50 20 
+     4E 5A 2C 24 
+     01 C2 FF       2301                        .DB "_JP NZ",$2C,'$',1,$C2,$FF
+0FBC-5F 4A 50 20 
+     50 2C 24 01 
+     F2 FF          2302                        .DB "_JP P",$2C,'$',1,$F2,$FF
+0FC6-5F 4A 50 20 
+     50 45 2C 24 
+     01 EA FF       2303                        .DB "_JP PE",$2C,'$',1,$EA,$FF
+0FD1-5F 4A 50 20 
+     50 4F 2C 24 
+     01 E2 FF       2304                        .DB "_JP PO",$2C,'$',1,$E2,$FF
+0FDC-5F 4A 50 20 
+     5A 2C 24 01 
+     CA FF          2305                        .DB "_JP Z",$2C,'$',1,$CA,$FF
+0FE6-5F 4A 50 20 
+     24 01 C3 FF    2306                        .DB "_JP $",1,$C3,$FF
+0FEE-               2307
+0FEE-               2308
+0FEE-               2309
+0FEE-5F 4C 44 20 
+     28 42 43 29 
+     2C 41 01 02 
+     FF             2310                        .DB "_LD (BC)",$2C,'A',1,$02,$FF
+0FFB-5F 4C 44 20 
+     28 44 45 29 
+     2C 41 01 12 
+     FF             2311                        .DB "_LD (DE)",$2C,'A',1,$12,$FF
+1008-5F 4C 44 20 
+     28 48 4C 29 
+     2C 41 01 77 
+     FF             2312                        .DB "_LD (HL)",$2C,'A',1,$77,$FF
+1015-5F 4C 44 20 
+     28 48 4C 29 
+     2C 42 01 70 
+     FF             2313                        .DB "_LD (HL)",$2C,'B',1,$70,$FF
+1022-5F 4C 44 20 
+     28 48 4C 29 
+     2C 43 01 71 
+     FF             2314                        .DB "_LD (HL)",$2C,'C',1,$71,$FF
+102F-5F 4C 44 20 
+     28 48 4C 29 
+     2C 44 01 72 
+     FF             2315                        .DB "_LD (HL)",$2C,'D',1,$72,$FF
+103C-5F 4C 44 20 
+     28 48 4C 29 
+     2C 45 01 73 
+     FF             2316                        .DB "_LD (HL)",$2C,'E',1,$73,$FF
+1049-5F 4C 44 20 
+     28 48 4C 29 
+     2C 48 01 74 
+     FF             2317                        .DB "_LD (HL)",$2C,'H',1,$74,$FF
+1056-5F 4C 44 20 
+     28 48 4C 29 
+     2C 4C 01 75 
+     FF             2318                        .DB "_LD (HL)",$2C,'L',1,$75,$FF
+1063-5F 4C 44 20 
+     28 48 4C 29 
+     2C 23 01 36 
+     FF             2319                        .DB "_LD (HL)",$2C,'#',1,$36,$FF
+1070-               2320
+1070-5F 4C 44 20 
+     28 24 29 2C 
+     41 01 32 FF    2321                        .DB "_LD ($)",$2C,'A',1,$32,$FF
+107C-5F 4C 44 20 
+     28 24 29 2C 
+     48 4C 01 22 
+     FF             2322                        .DB "_LD ($)",$2C,"HL",1,$22,$FF
+1089-               2323
+1089-               2324
+1089-5F 4C 44 20 
+     41 2C 28 42 
+     43 29 01 0A 
+     FF             2325                        .DB "_LD A",$2C,"(BC)",1,$0A,$FF
+1096-5F 4C 44 20 
+     41 2C 28 44 
+     45 29 01 1A 
+     FF             2326                        .DB "_LD A",$2C,"(DE)",1,$1A,$FF
+10A3-5F 4C 44 20 
+     41 2C 28 48 
+     4C 29 01 7E 
+     FF             2327                        .DB "_LD A",$2C,"(HL)",1,$7E,$FF
+10B0-               2328
+10B0-5F 4C 44 20 
+     41 2C 41 01 
+     7F FF          2329                        .DB "_LD A",$2C,'A',1,$7F,$FF
+10BA-5F 4C 44 20 
+     41 2C 42 01 
+     78 FF          2330                        .DB "_LD A",$2C,'B',1,$78,$FF
+10C4-5F 4C 44 20 
+     41 2C 43 01 
+     79 FF          2331                        .DB "_LD A",$2C,'C',1,$79,$FF
+10CE-5F 4C 44 20 
+     41 2C 44 01 
+     7A FF          2332                        .DB "_LD A",$2C,'D',1,$7A,$FF
+10D8-5F 4C 44 20 
+     41 2C 45 01 
+     7B FF          2333                        .DB "_LD A",$2C,'E',1,$7B,$FF
+10E2-5F 4C 44 20 
+     41 2C 48 01 
+     7C FF          2334                        .DB "_LD A",$2C,'H',1,$7C,$FF
+10EC-5F 4C 44 20 
+     41 2C 4C 01 
+     7D FF          2335                        .DB "_LD A",$2C,'L',1,$7D,$FF
+10F6-5F 4C 44 20 
+     41 2C 28 24 
+     29 01 3A FF    2336                        .DB "_LD A",$2C,"($)",1,$3A,$FF
+1102-5F 4C 44 20 
+     41 2C 23 01 
+     3E FF          2337                        .DB "_LD A",$2C,'#',1,$3E,$FF
+110C-5F 4C 44 20 
+     42 2C 28 48 
+     4C 29 01 46 
+     FF             2338                        .DB "_LD B",$2C,"(HL)",1,$46,$FF
+1119-5F 4C 44 20 
+     42 2C 41 01 
+     47 FF          2339                        .DB "_LD B",$2C,'A',1,$47,$FF
+1123-5F 4C 44 20 
+     42 2C 42 01 
+     40 FF          2340                        .DB "_LD B",$2C,'B',1,$40,$FF
+112D-5F 4C 44 20 
+     42 2C 43 01 
+     41 FF          2341                        .DB "_LD B",$2C,'C',1,$41,$FF
+1137-5F 4C 44 20 
+     42 2C 44 01 
+     42 FF          2342                        .DB "_LD B",$2C,'D',1,$42,$FF
+1141-5F 4C 44 20 
+     42 2C 45 01 
+     43 FF          2343                        .DB "_LD B",$2C,'E',1,$43,$FF
+114B-5F 4C 44 20 
+     42 2C 48 01 
+     44 FF          2344                        .DB "_LD B",$2C,'H',1,$44,$FF
+1155-5F 4C 44 20 
+     42 2C 4C 01 
+     45 FF          2345                        .DB "_LD B",$2C,'L',1,$45,$FF
+115F-5F 4C 44 20 
+     42 2C 23 01 
+     06 FF          2346                        .DB "_LD B",$2C,'#',1,$06,$FF
+1169-5F 4C 44 20 
+     42 43 2C 24 
+     01 01 FF       2347                        .DB "_LD BC",$2C,'$',1,$01,$FF
+1174-5F 4C 44 20 
+     43 2C 28 48 
+     4C 29 01 4E 
+     FF             2348                        .DB "_LD C",$2C,"(HL)",1,$4E,$FF
+1181-5F 4C 44 20 
+     43 2C 41 01 
+     4F FF          2349                        .DB "_LD C",$2C,'A',1,$4F,$FF
+118B-5F 4C 44 20 
+     43 2C 42 01 
+     48 FF          2350                        .DB "_LD C",$2C,'B',1,$48,$FF
+1195-5F 4C 44 20 
+     43 2C 43 01 
+     49 FF          2351                        .DB "_LD C",$2C,'C',1,$49,$FF
+119F-5F 4C 44 20 
+     43 2C 44 01 
+     4A FF          2352                        .DB "_LD C",$2C,'D',1,$4A,$FF
+11A9-5F 4C 44 20 
+     43 2C 45 01 
+     4B FF          2353                        .DB "_LD C",$2C,'E',1,$4B,$FF
+11B3-5F 4C 44 20 
+     43 2C 48 01 
+     4C FF          2354                        .DB "_LD C",$2C,'H',1,$4C,$FF
+11BD-5F 4C 44 20 
+     43 2C 4C 01 
+     4D FF          2355                        .DB "_LD C",$2C,'L',1,$4D,$FF
+11C7-5F 4C 44 20 
+     43 2C 23 01 
+     0E FF          2356                        .DB "_LD C",$2C,'#',1,$0E,$FF
+11D1-5F 4C 44 20 
+     44 2C 28 48 
+     4C 29 01 56 
+     FF             2357                        .DB "_LD D",$2C,"(HL)",1,$56,$FF
+11DE-5F 4C 44 20 
+     44 2C 41 01 
+     57 FF          2358                        .DB "_LD D",$2C,'A',1,$57,$FF
+11E8-5F 4C 44 20 
+     44 2C 42 01 
+     50 FF          2359                        .DB "_LD D",$2C,'B',1,$50,$FF
+11F2-5F 4C 44 20 
+     44 2C 43 01 
+     51 FF          2360                        .DB "_LD D",$2C,'C',1,$51,$FF
+11FC-5F 4C 44 20 
+     44 2C 44 01 
+     52 FF          2361                        .DB "_LD D",$2C,'D',1,$52,$FF
+1206-5F 4C 44 20 
+     44 2C 45 01 
+     53 FF          2362                        .DB "_LD D",$2C,'E',1,$53,$FF
+1210-5F 4C 44 20 
+     44 2C 48 01 
+     54 FF          2363                        .DB "_LD D",$2C,'H',1,$54,$FF
+121A-5F 4C 44 20 
+     44 2C 4C 01 
+     55 FF          2364                        .DB "_LD D",$2C,'L',1,$55,$FF
+1224-5F 4C 44 20 
+     44 2C 23 01 
+     16 FF          2365                        .DB "_LD D",$2C,'#',1,$16,$FF
+122E-5F 4C 44 20 
+     44 45 2C 24 
+     01 11 FF       2366                        .DB "_LD DE",$2C,'$',1,$11,$FF
+1239-5F 4C 44 20 
+     45 2C 28 48 
+     4C 29 01 5E 
+     FF             2367                        .DB "_LD E",$2C,"(HL)",1,$5E,$FF
+1246-5F 4C 44 20 
+     45 2C 41 01 
+     5F FF          2368                        .DB "_LD E",$2C,'A',1,$5F,$FF
+1250-5F 4C 44 20 
+     45 2C 42 01 
+     58 FF          2369                        .DB "_LD E",$2C,'B',1,$58,$FF
+125A-5F 4C 44 20 
+     45 2C 43 01 
+     59 FF          2370                        .DB "_LD E",$2C,'C',1,$59,$FF
+1264-5F 4C 44 20 
+     45 2C 44 01 
+     5A FF          2371                        .DB "_LD E",$2C,'D',1,$5A,$FF
+126E-5F 4C 44 20 
+     45 2C 45 01 
+     5B FF          2372                        .DB "_LD E",$2C,'E',1,$5B,$FF
+1278-5F 4C 44 20 
+     45 2C 48 01 
+     5C FF          2373                        .DB "_LD E",$2C,'H',1,$5C,$FF
+1282-5F 4C 44 20 
+     45 2C 4C 01 
+     5D FF          2374                        .DB "_LD E",$2C,'L',1,$5D,$FF
+128C-5F 4C 44 20 
+     45 2C 23 01 
+     1E FF          2375                        .DB "_LD E",$2C,'#',1,$1E,$FF
+1296-5F 4C 44 20 
+     48 2C 28 48 
+     4C 29 01 66 
+     FF             2376                        .DB "_LD H",$2C,"(HL)",1,$66,$FF
+12A3-5F 4C 44 20 
+     48 2C 41 01 
+     67 FF          2377                        .DB "_LD H",$2C,'A',1,$67,$FF
+12AD-5F 4C 44 20 
+     48 2C 42 01 
+     60 FF          2378                        .DB "_LD H",$2C,'B',1,$60,$FF
+12B7-5F 4C 44 20 
+     48 2C 43 01 
+     61 FF          2379                        .DB "_LD H",$2C,'C',1,$61,$FF
+12C1-5F 4C 44 20 
+     48 2C 44 01 
+     62 FF          2380                        .DB "_LD H",$2C,'D',1,$62,$FF
+12CB-5F 4C 44 20 
+     48 2C 45 01 
+     63 FF          2381                        .DB "_LD H",$2C,'E',1,$63,$FF
+12D5-5F 4C 44 20 
+     48 2C 48 01 
+     64 FF          2382                        .DB "_LD H",$2C,'H',1,$64,$FF
+12DF-5F 4C 44 20 
+     48 2C 4C 01 
+     65 FF          2383                        .DB "_LD H",$2C,'L',1,$65,$FF
+12E9-5F 4C 44 20 
+     48 2C 23 01 
+     26 FF          2384                        .DB "_LD H",$2C,'#',1,$26,$FF
+12F3-5F 4C 44 20 
+     48 4C 2C 28 
+     24 29 01 2A 
+     FF             2385                        .DB "_LD HL",$2C,"($)",1,$2A,$FF
+1300-5F 4C 44 20 
+     48 4C 2C 24 
+     01 21 FF       2386                        .DB "_LD HL",$2C,'$',1,$21,$FF
+130B-5F 4C 44 20 
+     4C 2C 28 48 
+     4C 29 01 6E 
+     FF             2387                        .DB "_LD L",$2C,"(HL)",1,$6E,$FF
+1318-5F 4C 44 20 
+     4C 2C 41 01 
+     6F FF          2388                        .DB "_LD L",$2C,'A',1,$6F,$FF
+1322-5F 4C 44 20 
+     4C 2C 42 01 
+     68 FF          2389                        .DB "_LD L",$2C,'B',1,$68,$FF
+132C-5F 4C 44 20 
+     4C 2C 43 01 
+     69 FF          2390                        .DB "_LD L",$2C,'C',1,$69,$FF
+1336-5F 4C 44 20 
+     4C 2C 44 01 
+     6A FF          2391                        .DB "_LD L",$2C,'D',1,$6A,$FF
+1340-5F 4C 44 20 
+     4C 2C 45 01 
+     6B FF          2392                        .DB "_LD L",$2C,'E',1,$6B,$FF
+134A-5F 4C 44 20 
+     4C 2C 48 01 
+     6C FF          2393                        .DB "_LD L",$2C,'H',1,$6C,$FF
+1354-5F 4C 44 20 
+     4C 2C 4C 01 
+     6D FF          2394                        .DB "_LD L",$2C,'L',1,$6D,$FF
+135E-5F 4C 44 20 
+     4C 2C 23 01 
+     2E FF          2395                        .DB "_LD L",$2C,'#',1,$2E,$FF
+1368-5F 4C 44 20 
+     53 50 2C 24 
+     01 31 FF       2396                        .DB "_LD SP",$2C,'$',1,$31,$FF
+1373-5F 4C 44 20 
+     53 50 2C 48 
+     4C 01 F9 FF    2397                        .DB "_LD SP",$2C,"HL",1,$F9,$FF
+137F-               2398
+137F-               2399
+137F-               2400
+137F-               2401
+137F-               2402
+137F-               2403
+137F-               2404
+137F-               2405
+137F-5F 4E 4F 50 
+     01 00 FF       2406                        .DB "_NOP",1,$00,$FF
+1386-               2407
+1386-5F 4F 52 20 
+     28 48 4C 29 
+     01 B6 FF       2408                        .DB "_OR (HL)",1,$B6,$FF
+1391-               2409
+1391-5F 4F 52 20 
+     41 01 B7 FF    2410                        .DB "_OR A",1,$B7,$FF
+1399-5F 4F 52 20 
+     42 01 B0 FF    2411                        .DB "_OR B",1,$B0,$FF
+13A1-5F 4F 52 20 
+     43 01 B1 FF    2412                        .DB "_OR C",1,$B1,$FF
+13A9-5F 4F 52 20 
+     44 01 B2 FF    2413                        .DB "_OR D",1,$B2,$FF
+13B1-5F 4F 52 20 
+     45 01 B3 FF    2414                        .DB "_OR E",1,$B3,$FF
+13B9-5F 4F 52 20 
+     48 01 B4 FF    2415                        .DB "_OR H",1,$B4,$FF
+13C1-5F 4F 52 20 
+     4C 01 B5 FF    2416                        .DB "_OR L",1,$B5,$FF
+13C9-5F 4F 52 20 
+     23 01 F6 FF    2417                        .DB "_OR #",1,$F6,$FF
+13D1-               2418
+13D1-               2419
+13D1-5F 4F 55 54 
+     20 28 23 29 
+     2C 41 01 D3 
+     FF             2420                        .DB "_OUT (#)",$2C,'A',1,$D3,$FF
+13DE-               2421
+13DE-               2422
+13DE-               2423
+13DE-               2424
+13DE-5F 50 4F 50 
+     20 41 46 01 
+     F1 FF          2425                        .DB "_POP AF",1,$F1,$FF
+13E8-5F 50 4F 50 
+     20 42 43 01 
+     C1 FF          2426                        .DB "_POP BC",1,$C1,$FF
+13F2-5F 50 4F 50 
+     20 44 45 01 
+     D1 FF          2427                        .DB "_POP DE",1,$D1,$FF
+13FC-5F 50 4F 50 
+     20 48 4C 01 
+     E1 FF          2428                        .DB "_POP HL",1,$E1,$FF
+1406-               2429
+1406-               2430
+1406-5F 50 55 53 
+     48 20 41 46 
+     01 F5 FF       2431                        .DB "_PUSH AF",1,$F5,$FF
+1411-5F 50 55 53 
+     48 20 42 43 
+     01 C5 FF       2432                        .DB "_PUSH BC",1,$C5,$FF
+141C-5F 50 55 53 
+     48 20 44 45 
+     01 D5 FF       2433                        .DB "_PUSH DE",1,$D5,$FF
+1427-5F 50 55 53 
+     48 20 48 4C 
+     01 E5 FF       2434                        .DB "_PUSH HL",1,$E5,$FF
+1432-               2435
+1432-               2436
+1432-5F 52 45 54 
+     01 C9 FF       2437                        .DB "_RET",1,$C9,$FF
+1439-5F 52 45 54 
+     20 43 01 D8 
+     FF             2438                        .DB "_RET C",1,$D8,$FF
+1442-5F 52 45 54 
+     20 4D 01 F8 
+     FF             2439                        .DB "_RET M",1,$F8,$FF
+144B-5F 52 45 54 
+     20 4E 43 01 
+     D0 FF          2440                        .DB "_RET NC",1,$D0,$FF
+1455-5F 52 45 54 
+     20 4E 5A 01 
+     C0 FF          2441                        .DB "_RET NZ",1,$C0,$FF
+145F-5F 52 45 54 
+     20 50 01 F0 
+     FF             2442                        .DB "_RET P",1,$F0,$FF
+1468-5F 52 45 54 
+     20 50 45 01 
+     E8 FF          2443                        .DB "_RET PE",1,$E8,$FF
+1472-5F 52 45 54 
+     20 50 4F 01 
+     E0 FF          2444                        .DB "_RET PO",1,$E0,$FF
+147C-5F 52 45 54 
+     20 5A 01 C8 
+     FF             2445                        .DB "_RET Z",1,$C8,$FF
+1485-               2446
+1485-5F 52 4C 41 
+     01 17 FF       2447                        .DB "_RLA",1,$17,$FF
+148C-               2448
+148C-               2449
+148C-               2450
+148C-               2451
+148C-5F 52 4C 43 
+     41 01 07 FF    2452                        .DB "_RLCA",1,$07,$FF
+1494-5F 52 52 41 
+     01 1F FF       2453                        .DB "_RRA",1,$1F,$FF
+149B-               2454
+149B-5F 52 52 43 
+     41 01 0F FF    2455                        .DB "_RRCA",1,$0F,$FF
+14A3-               2456
+14A3-               2457
+14A3-5F 52 53 54 
+     20 30 30 01 
+     C7 FF          2458                        .DB "_RST 00",1,$C7,$FF
+14AD-5F 52 53 54 
+     20 30 38 01 
+     CF FF          2459                        .DB "_RST 08",1,$CF,$FF
+14B7-5F 52 53 54 
+     20 31 30 01 
+     D7 FF          2460                        .DB "_RST 10",1,$D7,$FF
+14C1-5F 52 53 54 
+     20 31 38 01 
+     DF FF          2461                        .DB "_RST 18",1,$DF,$FF
+14CB-5F 52 53 54 
+     20 32 30 01 
+     E7 FF          2462                        .DB "_RST 20",1,$E7,$FF
+14D5-5F 52 53 54 
+     20 32 38 01 
+     EF FF          2463                        .DB "_RST 28",1,$EF,$FF
+14DF-5F 52 53 54 
+     20 33 30 01 
+     F7 FF          2464                        .DB "_RST 30",1,$F7,$FF
+14E9-5F 52 53 54 
+     20 33 38 01 
+     FF FF          2465                        .DB "_RST 38",1,$FF,$FF
+14F3-               2466
+14F3-5F 53 42 43 
+     20 41 2C 28 
+     48 4C 29 01 
+     9E FF          2467                        .DB "_SBC A",$2C,"(HL)",1,$9E,$FF
+1501-               2468
+1501-5F 53 42 43 
+     20 41 2C 41 
+     01 9F FF       2469                        .DB "_SBC A",$2C,'A',1,$9F,$FF
+150C-5F 53 42 43 
+     20 41 2C 42 
+     01 98 FF       2470                        .DB "_SBC A",$2C,'B',1,$98,$FF
+1517-5F 53 42 43 
+     20 41 2C 43 
+     01 99 FF       2471                        .DB "_SBC A",$2C,'C',1,$99,$FF
+1522-5F 53 42 43 
+     20 41 2C 44 
+     01 9A FF       2472                        .DB "_SBC A",$2C,'D',1,$9A,$FF
+152D-5F 53 42 43 
+     20 41 2C 45 
+     01 9B FF       2473                        .DB "_SBC A",$2C,'E',1,$9B,$FF
+1538-5F 53 42 43 
+     20 41 2C 48 
+     01 9C FF       2474                        .DB "_SBC A",$2C,'H',1,$9C,$FF
+1543-5F 53 42 43 
+     20 41 2C 4C 
+     01 9D FF       2475                        .DB "_SBC A",$2C,'L',1,$9D,$FF
+154E-               2476
+154E-5F 53 42 43 
+     20 41 2C 23 
+     01 DE FF       2477                        .DB "_SBC A",$2C,'#',1,$DE,$FF
+1559-               2478
+1559-5F 53 43 46 
+     01 37 FF       2479                        .DB "_SCF",1,$37,$FF
+1560-               2480
+1560-               2481
+1560-               2482
+1560-               2483
+1560-               2484
+1560-5F 53 55 42 
+     20 28 48 4C 
+     29 01 96 FF    2485                        .DB "_SUB (HL)",1,$96,$FF
+156C-               2486
+156C-5F 53 55 42 
+     20 41 01 97 
+     FF             2487                        .DB "_SUB A",1,$97,$FF
+1575-5F 53 55 42 
+     20 42 01 90 
+     FF             2488                        .DB "_SUB B",1,$90,$FF
+157E-5F 53 55 42 
+     20 43 01 91 
+     FF             2489                        .DB "_SUB C",1,$91,$FF
+1587-5F 53 55 42 
+     20 44 01 92 
+     FF             2490                        .DB "_SUB D",1,$92,$FF
+1590-5F 53 55 42 
+     20 45 01 93 
+     FF             2491                        .DB "_SUB E",1,$93,$FF
+1599-5F 53 55 42 
+     20 48 01 94 
+     FF             2492                        .DB "_SUB H",1,$94,$FF
+15A2-5F 53 55 42 
+     20 4C 01 95 
+     FF             2493                        .DB "_SUB L",1,$95,$FF
+15AB-5F 53 55 42 
+     20 23 01 D6 
+     FF             2494                        .DB "_SUB #",1,$D6,$FF
+15B4-               2495
+15B4-               2496
+15B4-5F 58 4F 52 
+     20 28 48 4C 
+     29 01 AE FF    2497                        .DB "_XOR (HL)",1,$AE,$FF
+15C0-               2498
+15C0-5F 58 4F 52 
+     20 41 01 AF 
+     FF             2499                        .DB "_XOR A",1,$AF,$FF
+15C9-5F 58 4F 52 
+     20 42 01 A8 
+     FF             2500                        .DB "_XOR B",1,$A8,$FF
+15D2-5F 58 4F 52 
+     20 43 01 A9 
+     FF             2501                        .DB "_XOR C",1,$A9,$FF
+15DB-5F 58 4F 52 
+     20 44 01 AA 
+     FF             2502                        .DB "_XOR D",1,$AA,$FF
+15E4-5F 58 4F 52 
+     20 45 01 AB 
+     FF             2503                        .DB "_XOR E",1,$AB,$FF
+15ED-5F 58 4F 52 
+     20 48 01 AC 
+     FF             2504                        .DB "_XOR H",1,$AC,$FF
+15F6-5F 58 4F 52 
+     20 4C 01 AD 
+     FF             2505                        .DB "_XOR L",1,$AD,$FF
+15FF-5F 58 4F 52 
+     20 23 01 EE 
+     FF             2506                        .DB "_XOR #",1,$EE,$FF
+1608-               2507
+1608-               2508       AFTERCOD:
+1608-5F 41 44 43 
+     20 41 2C 28 
+     49 58 2B 23 
+     29 02 DD 8E    2509                        .DB "_ADC A",$2C,"(IX+#)",2,$DD,$8E
+1618-5F 41 44 43 
+     20 41 2C 28 
+     49 59 2B 23 
+     29 02 FD 8E    2510                        .DB "_ADC A",$2C,"(IY+#)",2,$FD,$8E
+1628-5F 41 44 43 
+     20 48 4C 2C 
+     42 43 02 ED 
+     4A             2511                        .DB "_ADC HL",$2C,"BC",2,$ED,$4A
+1635-5F 41 44 43 
+     20 48 4C 2C 
+     44 45 02 ED 
+     5A             2512                        .DB "_ADC HL",$2C,"DE",2,$ED,$5A
+1642-5F 41 44 43 
+     20 48 4C 2C 
+     48 4C 02 ED 
+     6A             2513                        .DB "_ADC HL",$2C,"HL",2,$ED,$6A
+164F-5F 41 44 43 
+     20 48 4C 2C 
+     53 50 02 ED 
+     7A             2514                        .DB "_ADC HL",$2C,"SP",2,$ED,$7A
+165C-5F 41 44 44 
+     20 41 2C 28 
+     49 58 2B 23 
+     29 02 DD 86    2515                        .DB "_ADD A",$2C,"(IX+#)",2,$DD,$86
+166C-5F 41 44 44 
+     20 41 2C 28 
+     49 59 2B 23 
+     29 02 FD 86    2516                        .DB "_ADD A",$2C,"(IY+#)",2,$FD,$86
+167C-5F 41 44 44 
+     20 49 58 2C 
+     42 43 02 DD 
+     09             2517                        .DB "_ADD IX",$2C,"BC",2,$DD,$09
+1689-5F 41 44 44 
+     20 49 58 2C 
+     44 45 02 DD 
+     19             2518                        .DB "_ADD IX",$2C,"DE",2,$DD,$19
+1696-5F 41 44 44 
+     20 49 58 2C 
+     49 58 02 DD 
+     29             2519                        .DB "_ADD IX",$2C,"IX",2,$DD,$29
+16A3-5F 41 44 44 
+     20 49 58 2C 
+     53 50 02 DD 
+     39             2520                        .DB "_ADD IX",$2C,"SP",2,$DD,$39
+16B0-5F 41 44 44 
+     20 49 59 2C 
+     42 43 02 FD 
+     09             2521                        .DB "_ADD IY",$2C,"BC",2,$FD,$09
+16BD-5F 41 44 44 
+     20 49 59 2C 
+     44 45 02 FD 
+     19             2522                        .DB "_ADD IY",$2C,"DE",2,$FD,$19
+16CA-5F 41 44 44 
+     20 49 59 2C 
+     49 59 02 FD 
+     29             2523                        .DB "_ADD IY",$2C,"IY",2,$FD,$29
+16D7-5F 41 44 44 
+     20 49 59 2C 
+     53 50 02 FD 
+     39             2524                        .DB "_ADD IY",$2C,"SP",2,$FD,$39
+16E4-5F 41 4E 44 
+     20 28 49 58 
+     2B 23 29 02 
+     DD A6          2525                        .DB "_AND (IX+#)",2,$DD,$A6
+16F2-5F 41 4E 44 
+     20 28 49 59 
+     2B 23 29 02 
+     FD A6          2526                        .DB "_AND (IY+#)",2,$FD,$A6
+1700-5F 42 49 54 
+     20 23 2C 28 
+     48 4C 29 02 
+     CB 46          2527                        .DB "_BIT #",$2C,"(HL)",2,$CB,$46
+170E-5F 42 49 54 
+     20 23 2C 41 
+     02 CB 47       2528                        .DB "_BIT #",$2C,'A',2,$CB,$47
+1719-5F 42 49 54 
+     20 23 2C 42 
+     02 CB 40       2529                        .DB "_BIT #",$2C,'B',2,$CB,$40
+1724-5F 42 49 54 
+     20 23 2C 43 
+     02 CB 41       2530                        .DB "_BIT #",$2C,'C',2,$CB,$41
+172F-5F 42 49 54 
+     20 23 2C 44 
+     02 CB 42       2531                        .DB "_BIT #",$2C,'D',2,$CB,$42
+173A-5F 42 49 54 
+     20 23 2C 45 
+     02 CB 43       2532                        .DB "_BIT #",$2C,'E',2,$CB,$43
+1745-5F 42 49 54 
+     20 23 2C 48 
+     02 CB 44       2533                        .DB "_BIT #",$2C,'H',2,$CB,$44
+1750-5F 42 49 54 
+     20 23 2C 4C 
+     02 CB 45       2534                        .DB "_BIT #",$2C,'L',2,$CB,$45
+175B-5F 43 50 20 
+     28 49 58 2B 
+     23 29 02 DD 
+     BE             2535                        .DB "_CP (IX+#)",2,$DD,$BE
+1768-5F 43 50 20 
+     28 49 59 2B 
+     23 29 02 FD 
+     BE             2536                        .DB "_CP (IY+#)",2,$FD,$BE
+1775-5F 43 50 44 
+     02 ED A9       2537                        .DB "_CPD",2,$ED,$A9   ;BASLANGICI BENZER KOMUTLARDA TABLODA ONCE KISA OLAN OLMALI
+177C-5F 43 50 44 
+     52 02 ED B9    2538                        .DB "_CPDR",2,$ED,$B9
+1784-5F 43 50 49 
+     02 ED A1       2539                        .DB "_CPI",2,$ED,$A1
+178B-5F 43 50 49 
+     52 02 ED B1    2540                        .DB "_CPIR",2,$ED,$B1
+1793-5F 44 45 43 
+     20 28 49 58 
+     2B 23 29 02 
+     DD 35          2541                        .DB "_DEC (IX+#)",2,$DD,$35
+17A1-5F 44 45 43 
+     20 28 49 59 
+     2B 23 29 02 
+     FD 35          2542                        .DB "_DEC (IY+#)",2,$FD,$35
+17AF-5F 44 45 43 
+     20 49 58 02 
+     DD 2B          2543                        .DB "_DEC IX",2,$DD,$2B
+17B9-5F 44 45 43 
+     20 49 59 02 
+     FD 2B          2544                        .DB "_DEC IY",2,$FD,$2B
+17C3-               2545
+17C3-5F 45 58 20 
+     28 53 50 29 
+     2C 49 58 02 
+     DD E3          2546                        .DB "_EX (SP)",$2C,"IX",2,$DD,$E3
+17D1-5F 45 58 20 
+     28 53 50 29 
+     2C 49 59 02 
+     FD E3          2547                        .DB "_EX (SP)",$2C,"IY",2,$FD,$E3
+17DF-               2548
+17DF-5F 49 4D 30 
+     02 ED 46       2549                        .DB "_IM0",2,$ED,$46
+17E6-5F 49 4D 31 
+     02 ED 56       2550                        .DB "_IM1",2,$ED,$56
+17ED-5F 49 4D 32 
+     02 ED 5E       2551                        .DB "_IM2",2,$ED,$5E
+17F4-5F 49 4E 20 
+     41 2C 28 43 
+     29 02 ED 78    2552                        .DB "_IN A",$2C,"(C)",2,$ED,$78
+1800-5F 49 4E 20 
+     42 2C 28 43 
+     29 02 ED 40    2553                        .DB "_IN B",$2C,"(C)",2,$ED,$40
+180C-5F 49 4E 20 
+     43 2C 28 43 
+     29 02 ED 48    2554                        .DB "_IN C",$2C,"(C)",2,$ED,$48
+1818-5F 49 4E 20 
+     44 2C 28 43 
+     29 02 ED 50    2555                        .DB "_IN D",$2C,"(C)",2,$ED,$50
+1824-5F 49 4E 20 
+     45 2C 28 43 
+     29 02 ED 58    2556                        .DB "_IN E",$2C,"(C)",2,$ED,$58
+1830-5F 49 4E 20 
+     48 2C 28 43 
+     29 02 ED 60    2557                        .DB "_IN H",$2C,"(C)",2,$ED,$60
+183C-5F 49 4E 20 
+     4C 2C 28 43 
+     29 02 ED 68    2558                        .DB "_IN L",$2C,"(C)",2,$ED,$68
+1848-5F 49 4E 43 
+     20 28 49 58 
+     2B 23 29 02 
+     DD 34          2559                        .DB "_INC (IX+#)",2,$DD,$34
+1856-5F 49 4E 43 
+     20 28 49 59 
+     2B 23 29 02 
+     FD 34          2560                        .DB "_INC (IY+#)",2,$FD,$34
+1864-5F 49 4E 44 
+     02 ED AA       2561                        .DB "_IND",2,$ED,$AA
+186B-5F 49 4E 44 
+     52 02 ED BA    2562                        .DB "_INDR",2,$ED,$BA
+1873-5F 49 4E 49 
+     02 ED A2       2563                        .DB "_INI",2,$ED,$A2
+187A-5F 49 4E 49 
+     52 02 ED B2    2564                        .DB "_INIR",2,$ED,$B2
+1882-5F 49 4E 43 
+     20 49 58 02 
+     DD 23          2565                        .DB "_INC IX",2,$DD,$23
+188C-5F 49 4E 43 
+     20 49 59 02 
+     FD 23          2566                        .DB "_INC IY",2,$FD,$23
+1896-               2567
+1896-5F 4A 50 20 
+     28 49 58 2B 
+     23 29 02 DD 
+     E9             2568                        .DB "_JP (IX+#)",2,$DD,$E9
+18A3-5F 4A 50 20 
+     28 49 59 2B 
+     23 29 02 FD 
+     E9             2569                        .DB "_JP (IY+#)",2,$FD,$E9
+18B0-               2570
+18B0-               2571
+18B0-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 41 
+     02 DD 77       2572                        .DB "_LD (IX+#)",$2C,'A',2,$DD,$77
+18BF-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 42 
+     02 DD 70       2573                        .DB "_LD (IX+#)",$2C,'B',2,$DD,$70
+18CE-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 43 
+     02 DD 71       2574                        .DB "_LD (IX+#)",$2C,'C',2,$DD,$71
+18DD-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 44 
+     02 DD 72       2575                        .DB "_LD (IX+#)",$2C,'D',2,$DD,$72
+18EC-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 45 
+     02 DD 73       2576                        .DB "_LD (IX+#)",$2C,'E',2,$DD,$73
+18FB-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 48 
+     02 DD 74       2577                        .DB "_LD (IX+#)",$2C,'H',2,$DD,$74
+190A-5F 4C 44 20 
+     28 49 58 2B 
+     23 29 2C 4C 
+     02 DD 75       2578                        .DB "_LD (IX+#)",$2C,'L',2,$DD,$75
+1919-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 41 
+     02 FD 77       2579                        .DB "_LD (IY+#)",$2C,'A',2,$FD,$77
+1928-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 42 
+     02 FD 70       2580                        .DB "_LD (IY+#)",$2C,'B',2,$FD,$70
+1937-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 43 
+     02 FD 71       2581                        .DB "_LD (IY+#)",$2C,'C',2,$FD,$71
+1946-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 44 
+     02 FD 72       2582                        .DB "_LD (IY+#)",$2C,'D',2,$FD,$72
+1955-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 45 
+     02 FD 73       2583                        .DB "_LD (IY+#)",$2C,'E',2,$FD,$73
+1964-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 48 
+     02 FD 74       2584                        .DB "_LD (IY+#)",$2C,'H',2,$FD,$74
+1973-5F 4C 44 20 
+     28 49 59 2B 
+     23 29 2C 4C 
+     02 FD 75       2585                        .DB "_LD (IY+#)",$2C,'L',2,$FD,$75
+1982-5F 4C 44 20 
+     28 24 29 2C 
+     42 43 02 ED 
+     43             2586                        .DB "_LD ($)",$2C,"BC",2,$ED,$43
+198F-5F 4C 44 20 
+     28 24 29 2C 
+     44 45 02 ED 
+     53             2587                        .DB "_LD ($)",$2C,"DE",2,$ED,$53
+199C-5F 4C 44 20 
+     28 24 29 2C 
+     49 58 02 DD 
+     22             2588                        .DB "_LD ($)",$2C,"IX",2,$DD,$22
+19A9-5F 4C 44 20 
+     28 24 29 2C 
+     49 59 02 FD 
+     22             2589                        .DB "_LD ($)",$2C,"IY",2,$FD,$22
+19B6-5F 4C 44 20 
+     28 24 29 2C 
+     53 50 02 ED 
+     73             2590                        .DB "_LD ($)",$2C,"SP",2,$ED,$73
+19C3-5F 4C 44 20 
+     41 2C 28 49 
+     58 2B 23 29 
+     02 DD 7E       2591                        .DB "_LD A",$2C,"(IX+#)",2,$DD,$7E
+19D2-5F 4C 44 20 
+     41 2C 28 49 
+     59 2B 23 29 
+     02 FD 7E       2592                        .DB "_LD A",$2C,"(IY+#)",2,$FD,$7E
+19E1-5F 4C 44 20 
+     41 2C 49 02 
+     ED 57          2593                        .DB "_LD A",$2C,'I',2,$ED,$57
+19EB-5F 4C 44 20 
+     41 2C 52 02 
+     ED 5F          2594                        .DB "_LD A",$2C,'R',2,$ED,$5F
+19F5-5F 4C 44 20 
+     42 2C 28 49 
+     58 2B 23 29 
+     02 DD 46       2595                        .DB "_LD B",$2C,"(IX+#)",2,$DD,$46
+1A04-5F 4C 44 20 
+     42 2C 28 49 
+     59 2B 23 29 
+     02 FD 46       2596                        .DB "_LD B",$2C,"(IY+#)",2,$FD,$46
+1A13-5F 4C 44 20 
+     42 43 2C 28 
+     24 29 02 ED 
+     4B             2597                        .DB "_LD BC",$2C,"($)",2,$ED,$4B
+1A20-5F 4C 44 20 
+     43 2C 28 49 
+     58 2B 23 29 
+     02 DD 4E       2598                        .DB "_LD C",$2C,"(IX+#)",2,$DD,$4E
+1A2F-5F 4C 44 20 
+     43 2C 28 49 
+     59 2B 23 29 
+     02 FD 4E       2599                        .DB "_LD C",$2C,"(IY+#)",2,$FD,$4E
+1A3E-5F 4C 44 20 
+     44 2C 28 49 
+     58 2B 23 29 
+     02 DD 56       2600                        .DB "_LD D",$2C,"(IX+#)",2,$DD,$56
+1A4D-5F 4C 44 20 
+     44 2C 28 49 
+     59 2B 23 29 
+     02 FD 56       2601                        .DB "_LD D",$2C,"(IY+#)",2,$FD,$56
+1A5C-5F 4C 44 20 
+     44 45 2C 28 
+     24 29 02 ED 
+     5B             2602                        .DB "_LD DE",$2C,"($)",2,$ED,$5B
+1A69-5F 4C 44 20 
+     45 2C 28 49 
+     58 2B 23 29 
+     02 DD 5E       2603                        .DB "_LD E",$2C,"(IX+#)",2,$DD,$5E
+1A78-5F 4C 44 20 
+     45 2C 28 49 
+     59 2B 23 29 
+     02 FD 5E       2604                        .DB "_LD E",$2C,"(IY+#)",2,$FD,$5E
+1A87-5F 4C 44 20 
+     48 2C 28 49 
+     58 2B 23 29 
+     02 DD 66       2605                        .DB "_LD H",$2C,"(IX+#)",2,$DD,$66
+1A96-5F 4C 44 20 
+     48 2C 28 49 
+     59 2B 23 29 
+     02 FD 66       2606                        .DB "_LD H",$2C,"(IY+#)",2,$FD,$66
+1AA5-5F 4C 44 20 
+     49 2C 41 02 
+     ED 47          2607                        .DB "_LD I",$2C,'A',2,$ED,$47
+1AAF-5F 4C 44 20 
+     49 58 2C 28 
+     24 29 02 DD 
+     2A             2608                        .DB "_LD IX",$2C,"($)",2,$DD,$2A
+1ABC-5F 4C 44 20 
+     49 58 2C 24 
+     02 DD 21       2609                        .DB "_LD IX",$2C,'$',2,$DD,$21
+1AC7-5F 4C 44 20 
+     49 59 2C 28 
+     24 29 02 FD 
+     2A             2610                        .DB "_LD IY",$2C,"($)",2,$FD,$2A
+1AD4-5F 4C 44 20 
+     49 59 2C 24 
+     02 FD 21       2611                        .DB "_LD IY",$2C,'$',2,$FD,$21
+1ADF-5F 4C 44 20 
+     4C 2C 28 49 
+     58 2B 23 29 
+     02 DD 6E       2612                        .DB "_LD L",$2C,"(IX+#)",2,$DD,$6E
+1AEE-5F 4C 44 20 
+     4C 2C 28 49 
+     59 2B 23 29 
+     02 FD 6E       2613                        .DB "_LD L",$2C,"(IY+#)",2,$FD,$6E
+1AFD-5F 4C 44 20 
+     52 2C 41 02 
+     ED 4F          2614                        .DB "_LD R",$2C,'A',2,$ED,$4F
+1B07-5F 4C 44 20 
+     53 50 2C 28 
+     24 29 02 ED 
+     7B             2615                        .DB "_LD SP",$2C,"($)",2,$ED,$7B
+1B14-5F 4C 44 20 
+     53 50 2C 49 
+     58 02 DD F9    2616                        .DB "_LD SP",$2C,"IX",2,$DD,$F9
+1B20-5F 4C 44 20 
+     53 50 2C 49 
+     59 02 FD F9    2617                        .DB "_LD SP",$2C,"IY",2,$FD,$F9
+1B2C-5F 4C 44 44 
+     02 ED A8       2618                        .DB "_LDD",2,$ED,$A8
+1B33-5F 4C 44 44 
+     52 02 ED B8    2619                        .DB "_LDDR",2,$ED,$B8
+1B3B-5F 4C 44 49 
+     02 ED A0       2620                        .DB "_LDI",2,$ED,$A0
+1B42-5F 4C 44 49 
+     52 02 ED B0    2621                        .DB "_LDIR",2,$ED,$B0
+1B4A-5F 4E 45 47 
+     02 ED 44       2622                        .DB "_NEG",2,$ED,$44
+1B51-5F 4F 52 20 
+     28 49 58 2B 
+     23 29 02 DD 
+     B6             2623                        .DB "_OR (IX+#)",2,$DD,$B6
+1B5E-5F 4F 52 20 
+     28 49 59 2B 
+     23 29 02 FD 
+     B6             2624                        .DB "_OR (IY+#)",2,$FD,$B6
+1B6B-5F 4F 54 44 
+     52 02 ED BB    2625                        .DB "_OTDR",2,$ED,$BB
+1B73-5F 4F 54 49 
+     52 02 ED B3    2626                        .DB "_OTIR",2,$ED,$B3
+1B7B-               2627
+1B7B-5F 4F 55 54 
+     20 28 43 29 
+     2C 41 02 ED 
+     79             2628                        .DB "_OUT (C)",$2C,'A',2,$ED,$79
+1B88-5F 4F 55 54 
+     20 28 43 29 
+     2C 42 02 ED 
+     41             2629                        .DB "_OUT (C)",$2C,'B',2,$ED,$41
+1B95-5F 4F 55 54 
+     20 28 43 29 
+     2C 43 02 ED 
+     49             2630                        .DB "_OUT (C)",$2C,'C',2,$ED,$49
+1BA2-5F 4F 55 54 
+     20 28 43 29 
+     2C 44 02 ED 
+     51             2631                        .DB "_OUT (C)",$2C,'D',2,$ED,$51
+1BAF-5F 4F 55 54 
+     20 28 43 29 
+     2C 45 02 ED 
+     59             2632                        .DB "_OUT (C)",$2C,'E',2,$ED,$59
+1BBC-5F 4F 55 54 
+     20 28 43 29 
+     2C 48 02 ED 
+     61             2633                        .DB "_OUT (C)",$2C,'H',2,$ED,$61
+1BC9-5F 4F 55 54 
+     20 28 43 29 
+     2C 4C 02 ED 
+     69             2634                        .DB "_OUT (C)",$2C,'L',2,$ED,$69
+1BD6-5F 4F 55 54 
+     44 02 ED AB    2635                        .DB "_OUTD",2,$ED,$AB
+1BDE-5F 4F 55 54 
+     49 02 ED A3    2636                        .DB "_OUTI",2,$ED,$A3
+1BE6-5F 50 4F 50 
+     20 49 58 02 
+     DD E1          2637                        .DB "_POP IX",2,$DD,$E1
+1BF0-5F 50 4F 50 
+     20 49 59 02 
+     FD E1          2638                        .DB "_POP IY",2,$FD,$E1
+1BFA-5F 50 55 53 
+     48 20 49 58 
+     02 DD E5       2639                        .DB "_PUSH IX",2,$DD,$E5
+1C05-5F 50 55 53 
+     48 20 49 59 
+     02 FD E5       2640                        .DB "_PUSH IY",2,$FD,$E5
+1C10-               2641
+1C10-5F 52 45 53 
+     20 23 2C 28 
+     48 4C 29 02 
+     CB 86          2642                        .DB "_RES #",$2C,"(HL)",2,$CB,$86
+1C1E-               2643               ;        .DB "_RES #",$2C,"(IX+#)",2,$DD,$CB
+1C1E-               2644               ;        .DB "_RES #",$2C,"(IY+#)",2,$FD,$CB
+1C1E-5F 52 45 53 
+     20 23 2C 41 
+     02 CB 87       2645                        .DB "_RES #",$2C,'A',2,$CB,$87
+1C29-5F 52 45 53 
+     20 23 2C 42 
+     02 CB 80       2646                        .DB "_RES #",$2C,'B',2,$CB,$80
+1C34-5F 52 45 53 
+     20 23 2C 43 
+     02 CB 81       2647                        .DB "_RES #",$2C,'C',2,$CB,$81
+1C3F-5F 52 45 53 
+     20 23 2C 44 
+     02 CB 82       2648                        .DB "_RES #",$2C,'D',2,$CB,$82
+1C4A-5F 52 45 53 
+     20 23 2C 45 
+     02 CB 83       2649                        .DB "_RES #",$2C,'E',2,$CB,$83
+1C55-5F 52 45 53 
+     20 23 2C 48 
+     02 CB 84       2650                        .DB "_RES #",$2C,'H',2,$CB,$84
+1C60-5F 52 45 53 
+     20 23 2C 4C 
+     02 CB 85       2651                        .DB "_RES #",$2C,'L',2,$CB,$85
+1C6B-5F 52 45 54 
+     49 02 ED 4D    2652                        .DB "_RETI",2,$ED,$4D
+1C73-5F 52 45 54 
+     4E 02 ED 45    2653                        .DB "_RETN",2,$ED,$45
+1C7B-               2654
+1C7B-5F 52 4C 20 
+     28 48 4C 29 
+     02 CB 16       2655                        .DB "_RL (HL)",2,$CB,$16
+1C86-               2656               ;        .DB "_RL (IX+#)",2,$DD,$CB
+1C86-               2657               ;        .DB "_RL (IY+#)",2,$FD,$CB
+1C86-5F 52 4C 20 
+     41 02 CB 17    2658                        .DB "_RL A",2,$CB,$17
+1C8E-5F 52 4C 20 
+     42 02 CB 10    2659                        .DB "_RL B",2,$CB,$10
+1C96-5F 52 4C 20 
+     43 02 CB 11    2660                        .DB "_RL C",2,$CB,$11
+1C9E-5F 52 4C 20 
+     44 02 CB 12    2661                        .DB "_RL D",2,$CB,$12
+1CA6-5F 52 4C 20 
+     45 02 CB 13    2662                        .DB "_RL E",2,$CB,$13
+1CAE-5F 52 4C 20 
+     48 02 CB 14    2663                        .DB "_RL H",2,$CB,$14
+1CB6-5F 52 4C 20 
+     4C 02 CB 15    2664                        .DB "_RL L",2,$CB,$15
+1CBE-5F 52 4C 43 
+     20 28 48 4C 
+     29 02 CB 06    2665                        .DB "_RLC (HL)",2,$CB,$06
+1CCA-               2666               ;        .DB "_RLC (IX+#)",2,$DD,$CB
+1CCA-               2667               ;        .DB "_RLC (IY+#)",2,$FD,$CB
+1CCA-5F 52 4C 43 
+     20 41 02 CB 
+     07             2668                        .DB "_RLC A",2,$CB,$07
+1CD3-5F 52 4C 43 
+     20 42 02 CB 
+     00             2669                        .DB "_RLC B",2,$CB,$00
+1CDC-5F 52 4C 43 
+     20 43 02 CB 
+     01             2670                        .DB "_RLC C",2,$CB,$01
+1CE5-5F 52 4C 43 
+     20 44 02 CB 
+     02             2671                        .DB "_RLC D",2,$CB,$02
+1CEE-5F 52 4C 43 
+     20 45 02 CB 
+     03             2672                        .DB "_RLC E",2,$CB,$03
+1CF7-5F 52 4C 43 
+     20 48 02 CB 
+     04             2673                        .DB "_RLC H",2,$CB,$04
+1D00-5F 52 4C 43 
+     20 4C 02 CB 
+     05             2674                        .DB "_RLC L",2,$CB,$05
+1D09-5F 52 4C 44 
+     02 ED 6F       2675                        .DB "_RLD",2,$ED,$6F
+1D10-5F 52 52 44 
+     02 ED 67       2676                        .DB "_RRD",2,$ED,$67
+1D17-5F 52 52 20 
+     28 48 4C 29 
+     02 CB 1E       2677                        .DB "_RR (HL)",2,$CB,$1E
+1D22-               2678               ;        .DB "_RR (IX+#)",2,$DD,$CB
+1D22-               2679               ;        .DB "_RR (IY+#)",2,$FD,$CB
+1D22-5F 52 52 20 
+     41 02 CB 1F    2680                        .DB "_RR A",2,$CB,$1F
+1D2A-5F 52 52 20 
+     42 02 CB 18    2681                        .DB "_RR B",2,$CB,$18
+1D32-5F 52 52 20 
+     43 02 CB 19    2682                        .DB "_RR C",2,$CB,$19
+1D3A-5F 52 52 20 
+     44 02 CB 1A    2683                        .DB "_RR D",2,$CB,$1A
+1D42-5F 52 52 20 
+     45 02 CB 1B    2684                        .DB "_RR E",2,$CB,$1B
+1D4A-5F 52 52 20 
+     48 02 CB 1C    2685                        .DB "_RR H",2,$CB,$1C
+1D52-5F 52 52 20 
+     4C 02 CB 1D    2686                        .DB "_RR L",2,$CB,$1D
+1D5A-5F 52 52 43 
+     20 28 48 4C 
+     29 02 CB 0E    2687                        .DB "_RRC (HL)",2,$CB,$0E
+1D66-               2688               ;        .DB "_RRC (IX+#)",2,$DD,$CB
+1D66-               2689               ;        .DB "_RRC (IY+#)",2,$FD,$CB
+1D66-5F 52 52 43 
+     20 41 02 CB 
+     0F             2690                        .DB "_RRC A",2,$CB,$0F
+1D6F-5F 52 52 43 
+     20 42 02 CB 
+     08             2691                        .DB "_RRC B",2,$CB,$08
+1D78-5F 52 52 43 
+     20 43 02 CB 
+     09             2692                        .DB "_RRC C",2,$CB,$09
+1D81-5F 52 52 43 
+     20 44 02 CB 
+     0A             2693                        .DB "_RRC D",2,$CB,$0A
+1D8A-5F 52 52 43 
+     20 45 02 CB 
+     0B             2694                        .DB "_RRC E",2,$CB,$0B
+1D93-5F 52 52 43 
+     20 48 02 CB 
+     0C             2695                        .DB "_RRC H",2,$CB,$0C
+1D9C-5F 52 52 43 
+     20 4C 02 CB 
+     0D             2696                        .DB "_RRC L",2,$CB,$0D
+1DA5-               2697
+1DA5-5F 53 42 43 
+     20 41 2C 28 
+     49 58 2B 23 
+     29 02 DD 9E    2698                        .DB "_SBC A",$2C,"(IX+#)",2,$DD,$9E
+1DB5-5F 53 42 43 
+     20 41 2C 28 
+     49 59 2B 23 
+     29 02 FD 9E    2699                        .DB "_SBC A",$2C,"(IY+#)",2,$FD,$9E
+1DC5-5F 53 42 43 
+     20 48 4C 2C 
+     42 43 02 ED 
+     42             2700                        .DB "_SBC HL",$2C,"BC",2,$ED,$42
+1DD2-5F 53 42 43 
+     20 48 4C 2C 
+     44 45 02 ED 
+     52             2701                        .DB "_SBC HL",$2C,"DE",2,$ED,$52
+1DDF-5F 53 42 43 
+     20 48 4C 2C 
+     48 4C 02 ED 
+     62             2702                        .DB "_SBC HL",$2C,"HL",2,$ED,$62
+1DEC-5F 53 42 43 
+     20 48 4C 2C 
+     53 50 02 ED 
+     72             2703                        .DB "_SBC HL",$2C,"SP",2,$ED,$72
+1DF9-5F 53 45 54 
+     20 23 2C 28 
+     48 4C 29 02 
+     CB C6          2704                        .DB "_SET #",$2C,"(HL)",2,$CB,$C6
+1E07-               2705               ;        .DB "_SET #",$2C,"(IX+#)",2,$DD,$CB
+1E07-               2706               ;        .DB "_SET #",$2C,"(IY+#)",2,$FD,$CB
+1E07-5F 53 45 54 
+     20 23 2C 41 
+     02 CB C7       2707                        .DB "_SET #",$2C,'A',2,$CB,$C7
+1E12-5F 53 45 54 
+     20 23 2C 42 
+     02 CB C0       2708                        .DB "_SET #",$2C,'B',2,$CB,$C0
+1E1D-5F 53 45 54 
+     20 23 2C 43 
+     02 CB C1       2709                        .DB "_SET #",$2C,'C',2,$CB,$C1
+1E28-5F 53 45 54 
+     20 23 2C 44 
+     02 CB C2       2710                        .DB "_SET #",$2C,'D',2,$CB,$C2
+1E33-5F 53 45 54 
+     20 23 2C 45 
+     02 CB C3       2711                        .DB "_SET #",$2C,'E',2,$CB,$C3
+1E3E-5F 53 45 54 
+     20 23 2C 48 
+     02 CB C4       2712                        .DB "_SET #",$2C,'H',2,$CB,$C4
+1E49-5F 53 45 54 
+     20 23 2C 4C 
+     02 CB C5       2713                        .DB "_SET #",$2C,'L',2,$CB,$C5
+1E54-               2714
+1E54-5F 53 4C 41 
+     20 28 48 4C 
+     29 02 CB 26    2715                        .DB "_SLA (HL)",2,$CB,$26
+1E60-               2716               ;        .DB "_SLA (IX+#)",2,$DD,$CB
+1E60-               2717               ;        .DB "_SLA (IY+#)",2,$FD,$CB
+1E60-5F 53 4C 41 
+     20 41 02 CB 
+     27             2718                        .DB "_SLA A",2,$CB,$27
+1E69-5F 53 4C 41 
+     20 42 02 CB 
+     20             2719                        .DB "_SLA B",2,$CB,$20
+1E72-5F 53 4C 41 
+     20 43 02 CB 
+     21             2720                        .DB "_SLA C",2,$CB,$21
+1E7B-5F 53 4C 41 
+     20 44 02 CB 
+     22             2721                        .DB "_SLA D",2,$CB,$22
+1E84-5F 53 4C 41 
+     20 45 02 CB 
+     23             2722                        .DB "_SLA E",2,$CB,$23
+1E8D-5F 53 4C 41 
+     20 48 02 CB 
+     24             2723                        .DB "_SLA H",2,$CB,$24
+1E96-5F 53 4C 41 
+     20 4C 02 CB 
+     25             2724                        .DB "_SLA L",2,$CB,$25
+1E9F-5F 53 52 41 
+     20 28 48 4C 
+     29 02 CB 2E    2725                        .DB "_SRA (HL)",2,$CB,$2E
+1EAB-               2726               ;        .DB "_SRA (IX+#)",2,$DD,$CB
+1EAB-               2727               ;        .DB "_SRA (IY+#)",2,$FD,$CB
+1EAB-5F 53 52 41 
+     20 41 02 CB 
+     2F             2728                        .DB "_SRA A",2,$CB,$2F
+1EB4-5F 53 52 41 
+     20 42 02 CB 
+     28             2729                        .DB "_SRA B",2,$CB,$28
+1EBD-5F 53 52 41 
+     20 43 02 CB 
+     29             2730                        .DB "_SRA C",2,$CB,$29
+1EC6-5F 53 52 41 
+     20 44 02 CB 
+     2A             2731                        .DB "_SRA D",2,$CB,$2A
+1ECF-5F 53 52 41 
+     20 45 02 CB 
+     2B             2732                        .DB "_SRA E",2,$CB,$2B
+1ED8-5F 53 52 41 
+     20 48 02 CB 
+     2C             2733                        .DB "_SRA H",2,$CB,$2C
+1EE1-5F 53 52 41 
+     20 4C 02 CB 
+     2D             2734                        .DB "_SRA L",2,$CB,$2D
+1EEA-               2735
+1EEA-5F 53 52 4C 
+     20 28 48 4C 
+     29 02 CB 3E    2736                        .DB "_SRL (HL)",2,$CB,$3E
+1EF6-               2737               ;        .DB "_SRL (IX+#)",2,$DD,$CB
+1EF6-               2738               ;        .DB "_SRL (IY+#)",2,$FD,$CB
+1EF6-5F 53 52 4C 
+     20 41 02 CB 
+     3F             2739                        .DB "_SRL A",2,$CB,$3F
+1EFF-5F 53 52 4C 
+     20 42 02 CB 
+     38             2740                        .DB "_SRL B",2,$CB,$38
+1F08-5F 53 52 4C 
+     20 43 02 CB 
+     39             2741                        .DB "_SRL C",2,$CB,$39
+1F11-5F 53 52 4C 
+     20 44 02 CB 
+     3A             2742                        .DB "_SRL D",2,$CB,$3A
+1F1A-5F 53 52 4C 
+     20 45 02 CB 
+     3B             2743                        .DB "_SRL E",2,$CB,$3B
+1F23-5F 53 52 4C 
+     20 48 02 CB 
+     3C             2744                        .DB "_SRL H",2,$CB,$3C
+1F2C-5F 53 52 4C 
+     20 4C 02 CB 
+     3D             2745                        .DB "_SRL L",2,$CB,$3D
+1F35-5F 53 55 42 
+     20 28 49 58 
+     2B 23 29 02 
+     DD 96          2746                        .DB "_SUB (IX+#)",2,$DD,$96
+1F43-5F 53 55 42 
+     20 28 49 59 
+     2B 23 29 02 
+     FD 96          2747                        .DB "_SUB (IY+#)",2,$FD,$96
+1F51-               2748
+1F51-5F 58 4F 52 
+     20 28 49 58 
+     2B 23 29 02 
+     DD AE          2749                        .DB "_XOR (IX+#)",2,$DD,$AE
+1F5F-5F 58 4F 52 
+     20 28 49 59 
+     2B 23 29 02 
+     FD AE          2750                        .DB "_XOR (IY+#)",2,$FD,$AE
+1F6D-               2751
+1F6D-00 00 00 00 
+     00 00 00 00    2752                        .DB 0,0,0,0,0,0,0,0
+1F75-00 00 00 00 
+     00 00 00 00    2753                        .DB 0,0,0,0,0,0,0,0
+1F7D-00 00 00 00 
+     00 00 00 00    2754       CODEND:  .DB 0,0,0,0,0,0,0,0
+1F85-00 00 00 00 
+     00 00 00 00    2755                        .DB 0,0,0,0,0,0,0,0
+1F8D-               2756
+1F8D-               2757
+1F8D-               2758
+1F8D-               2759
+1F8D-               2760
+1F8D-               2761
+1F8D-               2762
+1F8D-               2763
+1F8D-               2764                       .END
