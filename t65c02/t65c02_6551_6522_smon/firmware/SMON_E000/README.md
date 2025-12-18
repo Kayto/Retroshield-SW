@@ -22,11 +22,8 @@ See [CHANGES.md](CHANGES.md) for detailed modifications from the original SMON.
 
 ### From VS Code (Recommended - Using Docker)
 
-Press `Ctrl+Shift+B` in the workspace root - this builds the ROM and updates memorymap.h automatically.
+**Why Docker?** I generally use Dawid Buchwald's prebuilt `dawidbuchwald/cc65-tools-make` Docker image which includes all necessary build tools (ca65, ld65, make). This is especially convenient for Windows environments where installing native 6502 development tools can be challenging.
 
-**Why Docker?** This project uses Dawid Buchwald's prebuilt `dawidbuchwald/cc65-tools-make` Docker image which includes all necessary build tools (ca65, ld65, make). This is especially convenient for Windows environments where installing native 6502 development tools can be challenging.
-
-See [../QUICKSTART.md](../QUICKSTART.md) for details.
 
 ### Manual Build (Command Line with Docker)
 
