@@ -3,6 +3,11 @@
 *.zip
 *.txt
 
+# Exception: Keep specific readme.txt files
+!t8085/t8085_8kbasic/8kbasic src/readme.txt
+!t8085/t8085_serial/serial src/readme.txt
+!t8085/t8085_tinybasic/tinybasic src/readme.txt
+
 # Ignore the 'comp' directory
 comp/
 
