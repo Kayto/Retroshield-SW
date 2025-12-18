@@ -1,0 +1,33 @@
+Modules list:
+-------------
+smon_e000.o:
+    CODE              Offs=000000  Size=001CA9  Align=00001  Fill=0000
+    JUMPTABLE         Offs=000000  Size=000075  Align=00001  Fill=0000
+    VECTORS           Offs=000000  Size=000006  Align=00001  Fill=0000
+config.o:
+uart_6551.o:
+    CODE              Offs=001CA9  Size=000034  Align=00001  Fill=0000
+
+
+Segment list:
+-------------
+Name                   Start     End    Size  Align
+----------------------------------------------------
+CODE                  00E000  00FCDC  001CDD  00001
+JUMPTABLE             00FF81  00FFF5  000075  00001
+VECTORS               00FFFA  00FFFF  000006  00001
+
+
+Exports list by name:
+---------------------
+
+
+
+Exports list by value:
+----------------------
+
+
+
+Imports list:
+-------------
+

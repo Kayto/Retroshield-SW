@@ -1,13 +1,44 @@
 ////////////////////////////////////////////////////////////////////
-// RetroShield 6502 for Teensy 3.5
-// EhBASIC with 6551 ACIA Emulation
+// RetroShield 6502 for Teensy 4.1
+// 6502 CPU with 6551 ACIA and 6522 VIA emulation
+// SMON Monitor Program
 //
-// 2019/09/13
-// Version 0.1
+// Version 1.0 - 2025/12/17
+//
+// Credits:
+// ---------
+// SMON - Original 6502 machine language monitor for C64/C128
+//        by Norfried Mann and Dietrich Weineck (1984)
+//        Published in 64'er magazine (Nov/Dec 1984, Jan 1985)
+//        https://www.c64-wiki.com/wiki/SMON
+//
+// smon6502 - Port of SMON to standalone 6502 systems
+//            by dhansel (2023)
+//            https://github.com/dhansel/smon6502/
+//            Based on disassembly by Michael (cbmuser)
+//            https://github.com/cbmuser/smon-reassembly
+//
+// RetroShield - 6502 hardware interface for Arduino/Teensy
+//               by Erturk Kocalar, 8Bitforce.com (2019)
+//               https://www.8bitforce.com/projects/retroshield/
+//
+// 6551 ACIA & 6522 VIA emulation for Teensy 4.1
+//               by kayto@github.com (2025)
+//
 
 // The MIT License (MIT)
-
+//
+// RetroShield code:
 // Copyright (c) 2019 Erturk Kocalar, 8Bitforce.com
+//
+// smon6502 port (no explicit license, credited here):
+// Refer to work by dhansel (2023)
+//
+// Original SMON (published in 64'er magazine 1984):
+// Authors: Norfried Mann, Dietrich Weineck
+//
+// 6522 VIA emulation:
+// Copyright (c) 2025 kayto@github.com
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,20 +58,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+// Date         Comments                                                Author
 // -----------------------------------------------------------------------------
-// EhBASIC License:
-// EhBASIC is free but not copyright free. For non-commercial use there is only 
-// one restriction: any derivative work should include, in any binary image 
-// distributed, the string "Derived from EhBASIC". See memorymap.h for compliance.
-// EhBASIC © 2002-2009 Lee Davison. All rights reserved for non-commercial use.
-// -----------------------------------------------------------------------------
-// 
-// Date         Comments                                               Author
-// -----------------------------------------------------------------------------
-// 09/13/2019   Bring-up on Teensy 3.5 (Apple 1).                      Erturk
-// 01/11/2024   Added Teensy 4.1 support (Apple 1).                    Erturk
-// 03/25/2024   Changed to more accurate timing for 1MHz op (Apple 1). Erturk
-// 2025/08/01   Ported EhBASIC.                                        kayto
+// 09/13/2019   Bring-up on Teensy 3.5 (Apple 1).                       Erturk
+// 01/11/2024   Added Teensy 4.1 support (Apple 1).                     Erturk
+// 03/25/2024   Changed to more accurate timing for 1MHz op (Apple 1).  Erturk
+// 2025/12/17   Ported SMON with 6551 and 6522 support.                 kayto
+//
 ////////////////////////////////////////////////////////////////////
 // Options
 //   outputDEBUG: Print memory access debugging messages.
@@ -51,17 +75,20 @@
 ////////////////////////////////////////////////////////////////////
 // BOARD DEFINITIONS
 ////////////////////////////////////////////////////////////////////
-
 #include "memorymap.h"      // Memory Map (ROM, RAM, PERIPHERALS)
 #include "portmap.h"        // Pin mapping to cpu
 #include "setuphold.h"      // Delays required to meet setup/hold
 #include "6551.h"           // 6551 Emulation
+#include "6522.h"           // 6522 Emulation
 
 unsigned long clock_cycle_count;
 unsigned long clock_cycle_last;
 
 word          uP_ADDR;
 byte          uP_DATA;
+
+// External variables from 6522.h
+extern volatile bool trace_walk_active;
 
 void uP_assert_reset()
 {
@@ -106,6 +133,14 @@ byte DATA_IN;
 inline __attribute__((always_inline))
 void cpu_tick()
 { 
+  static uint32_t input_timeout = 0;
+
+  // Poll 6551 ACIA before each CPU cycle
+  m6551_poll();
+  
+  // Poll VIA BEFORE clock to ensure IRQ pin state is ready
+  m6522_poll();
+
   CLK_LOW;
   accurate_delay(NS_TO_TEENSY_CYCLE(50));     // Write HOLD Time  
   xDATA_DIR_IN();
@@ -115,18 +150,23 @@ void cpu_tick()
 
   CLK_HIGH;
 
+  // RDY is always HIGH - let CPU run freely
+  // VIA timer naturally paces tracewalk execution
+  digitalWriteFast(uP_RDY, HIGH);
+
   if (STATE_RW_N)
   {
     xDATA_DIR_OUT();
 
-    if ((ROM_START <= uP_ADDR) && (uP_ADDR <= ROM_END))
+    if ((ROM_START <= uP_ADDR) && (uP_ADDR <= ROM_END)) {
       DATA_OUT = rom_bin[uP_ADDR - ROM_START];
-//    else if ((BASIC_START <= uP_ADDR) && (uP_ADDR <= BASIC_END))
-//      DATA_OUT = basic_bin[uP_ADDR - BASIC_START];
+    }
     else if ((RAM_START <= uP_ADDR) && (uP_ADDR <= RAM_END))
       DATA_OUT = RAM[uP_ADDR - RAM_START];
     else if ((ACIA_DATA <= uP_ADDR) && (uP_ADDR <= ACIA_CONTROL))
       DATA_OUT = m6551_read(uP_ADDR);
+    else if ((VIA_BASE <= uP_ADDR) && (uP_ADDR <= VIA_BASE + 0xF))
+      DATA_OUT = m6522_read(uP_ADDR);  
 
     SET_DATA_OUT(DATA_OUT);
     accurate_delay(NS_TO_TEENSY_CYCLE(500)); // C_High time.
@@ -135,7 +175,7 @@ void cpu_tick()
     {
       char tmp[50];
       sprintf(tmp, "-- A=%0.4X D=%0.2X\n\r", uP_ADDR, DATA_OUT);
-      Serial.write(tmp);
+      Serial.print(tmp);
     }
 #endif
 
@@ -150,20 +190,46 @@ void cpu_tick()
     accurate_delay(NS_TO_TEENSY_CYCLE(250));
     DATA_IN = xDATA_IN();
 
-    if ((RAM_START <= uP_ADDR) && (uP_ADDR <= RAM_END))
+    if ((RAM_START <= uP_ADDR) && (uP_ADDR <= RAM_END)) {
       RAM[uP_ADDR - RAM_START] = DATA_IN;
+    }
     else if ((ACIA_DATA <= uP_ADDR) && (uP_ADDR <= ACIA_CONTROL))
       m6551_write(uP_ADDR, DATA_IN);
-
+    else if ((VIA_BASE <= uP_ADDR) && (uP_ADDR <= VIA_BASE + 0xF))
+      m6522_write(uP_ADDR, DATA_IN);
 #if outputDEBUG
     {
       char tmp[50];
       sprintf(tmp, "WR A=%0.4X D=%0.2X\n\r", uP_ADDR, DATA_IN);
-      Serial.write(tmp);
+      Serial.print(tmp);
     }
 #endif
 
     accurate_delay(NS_TO_TEENSY_CYCLE(250));
+  }
+
+  // Timeout for trace walk if KGETIN stalls
+  if (trace_walk_active) {
+    // Disabled: Show CPU is still running
+    // if (cycle_count % 50000 == 0) {
+    //   Serial.print(F("[CPU] Cycles: "));
+    //   Serial.print(cycle_count);
+    //   Serial.print(F(" PC: $"));
+    //   Serial.println(uP_ADDR, HEX);
+    // }
+    
+    input_timeout++;
+    if (input_timeout > 100000000) { // Increased: ~100s timeout for human interaction
+      trace_walk_active = false;
+      digitalWriteFast(uP_RDY, HIGH);
+      m6522_init(); // Reset VIA state
+#if ACIA_DEBUG
+      Serial.println(F("[CPU] Trace walk timeout, exiting to SMON"));
+#endif
+      input_timeout = 0;
+    }
+  } else {
+    input_timeout = 0;
   }
 
 #if outputDEBUG
@@ -185,13 +251,9 @@ void serialEvent0()
 ////////////////////////////////////////////////////////////////////
 void setup() 
 {
-  Serial.begin(0);
+  Serial.begin(115200); // Explicitly set baud rate
   while (!Serial);
 
-  Serial.write(27);
-  Serial.print("[2J");
-  Serial.write(27);
-  Serial.print("[H");
   Serial.println("\n");
   Serial.println("Configuration:");
   Serial.println("==============");
@@ -202,21 +264,21 @@ void setup()
   Serial.print("SRAM_END:   0x"); Serial.println(RAM_END, HEX);
   Serial.println("");
   Serial.println("=======================================================");
-  Serial.println("> EhBASIC for RetroShield 6502");
-  Serial.println("> with 6551 ACIA emulation");
-  Serial.println("> EhBASIC by Lee Davidson");
-  Serial.println("> https://github.com/Klaus2m5/6502_EhBASIC_V2.22");
+  Serial.println("> SMON for RetroShield 6502");
+  Serial.println("> with 6551 ACIA and 6522 VIA emulation");
+  Serial.println("> supporting tracewalk mode");
+  Serial.println("> added by kayto@github.com");
   Serial.println("=======================================================");
-  //Serial.println("Notes:");
 
   uP_init();
   m6551_init();
+  m6522_init(); 
   accurate_delay_init();
 
   uP_assert_reset();
   for (int i = 0; i < 25; i++) cpu_tick();
   uP_release_reset();
-
+  Serial.println("Reset released, starting CPU...");
   Serial.println("\n");
 }
 
@@ -226,10 +288,10 @@ void setup()
 void loop()
 {
   byte i = 0;
+  
   while (1)
   {
-    m6551_poll(); // poll USB Serial for incoming data
-    cpu_tick();
+    cpu_tick();  // VIA and ACIA polled inside cpu_tick()
 
     i++;
     if (i == 0) serialEvent0();

@@ -1,0 +1,3251 @@
+ca65 V2.19 - Git 62da869e4
+Main file   : smon_e000.s
+Current file: smon_e000.s
+
+000000r 1               ;;; The SMON machine language monitor was originally published
+000000r 1               ;;; in the November/December/January 1984/85 issues of German magazine "64er":
+000000r 1               ;;; https://archive.org/details/64er_1984_11/page/n59/mode/2up
+000000r 1               ;;; https://archive.org/details/64er_1984_12/page/n59/mode/2up
+000000r 1               ;;; https://archive.org/details/64er_1985_01/page/n68/mode/2up
+000000r 1               ;;; SMON was written for the Commodore 64 by Norfried Mann and Dietrich Weineck
+000000r 1               ;;;
+000000r 1               ;;; For an English description of SMON capabilities see:
+000000r 1               ;;;     https://www.c64-wiki.com/wiki/SMON
+000000r 1               ;;; The following original SMON commands are NOT included in this version:
+000000r 1               ;;;   B (BASIC data), L (disk load), S (disk save), P (printer), I (set I/O device)
+000000r 1               ;;; The following commands were added in this version:
+000000r 1               ;;;   H  - print help screen
+000000r 1               ;;;   L  - load Intel HEX data through terminal
+000000r 1               ;;;   MS - check and print memory (RAM) size
+000000r 1               ;;;   MT xxxx yyyy nn - test memory (RAM) xxxx-yyyy nn times (default 1)
+000000r 1               ;;;
+000000r 1               ;;; This code is an adaptation of SMON to a minimal 6502 system by David Hansel (2023).
+000000r 1               ;;; Minimum system requirements:
+000000r 1               ;;;   - MOS 6502 CPU
+000000r 1               ;;;   - MOS 6522 VIA (necessary only if "trace" functions are used)
+000000r 1               ;;;     The VIA interrupt output must be attached to the 6502 IRQ input
+000000r 1               ;;;   - 8K of ROM at address E000-F000 (for SMON)
+000000r 1               ;;;   - 4K of RAM at address 0000-1000
+000000r 1               ;;;   - UART for communication. As presented here, a MC6850 UART
+000000r 1               ;;;     at address $8200 is expected. However, this can easily
+000000r 1               ;;;     be adapted by modifying the code in file "uart.asm"
+000000r 1               ;;;
+000000r 1               ;;; -------------------------------------------------------------------------
+000000r 1               ;;; SMON_E000 by kayto@github.com (2025)
+000000r 1               ;;;
+000000r 1               ;;; This is a version of SMON for the Retroshield.
+000000r 1               ;;;
+000000r 1               ;;; Hardware:
+000000r 1               ;;;   - UART: WDC 6551 @ $8400, 19200 baud
+000000r 1               ;;;   - VIA1: $9000, VIA2: $8800
+000000r 1               ;;;   - RAM: 32K ($0000-$7FFF)
+000000r 1               ;;;   - ROM: 8K @ $E000
+000000r 1               ;;;
+000000r 1               ;;; Build System:
+000000r 1               ;;;   - ca65/ld65 toolchain (converted from VASM)
+000000r 1               ;;;   - Linker config: smon_e000.cfg
+000000r 1               ;;;   - Output: 8K binary (no padding)
+000000r 1               ;;;
+000000r 1               ;;; Boot Flow:
+000000r 1               ;;;   - ENTRY: Cold boot - init stack, set vectors, print banner, prompt
+000000r 1               ;;;   - SMON:  BRK entry - save registers, show 'R' command, prompt
+000000r 1               ;;;   - X cmd: Cold restart (jmp ENTRY)
+000000r 1               ;;;
+000000r 1               ;;; UART:
+000000r 1               ;;;   - UAGET: Non-blocking (returns 0 if no char)
+000000r 1               ;;;   - LAB_WAIT_Rx: Blocking receive
+000000r 1               ;;;
+000000r 1               ;;; Help System:
+000000r 1               ;;;   - Categorized: H A, H M, H F, H E, H C, H R, H O
+000000r 1               ;;;
+000000r 1               ;;; Commands:
+000000r 1               ;;;   - X: Cold restart (reset monitor)
+000000r 1               ;;;   - S: Save memory as Intel HEX
+000000r 1               ;;;
+000000r 1               ;;; Bug Fixes:
+000000r 1               ;;;   - PRTINT leading zero suppression
+000000r 1               ;;;   - GETIN non-blocking UART handling
+000000r 1               ;;; -------------------------------------------------------------------------
+000000r 1               
+000000r 1               
+000000r 1                .include "config.s"
+000000r 2               ; Base address of the VIA chip in the system. The VIA is only
+000000r 2               ; necessary if you
+000000r 2               ; - want to use the trace (TW/TQ/TS) functions in SMON
+000000r 2               ; and/or
+000000r 2               ; - want to use the VIA UART driver
+000000r 2               ; If neither of these applies, set the VIA address to 0
+000000r 2               VIA = $9000
+000000r 2               
+000000r 2               ; Highest address of installed RAM - all RAM is assumed to be
+000000r 2               ; in one consecutive range from 0-RAMTOP
+000000r 2               RAMTOP = $7FFF
+000000r 2               
+000000r 2               ; main CPU clock rate (used for UART timing)
+000000r 2               CPU_CLOCK_RATE  =1000000 ;1843200
+000000r 2               
+000000r 2               ; Currently supported UART options are:
+000000r 2               ;   6522: MOS 6522 (VIA)
+000000r 2               ;   6551: MOS 6551 or WDC 65C51N (ACIA)
+000000r 2               ;   6850: Motorola MC6850 UART
+000000r 2               UART_TYPE = 6551
+000000r 2               
+000000r 2               ;;; ------------------------------------------------------------------
+000000r 2               
+000000r 2               VIA_DRB  = VIA +  0    ; VIA port B data register
+000000r 2               VIA_DRA  = VIA +  1    ; VIA port A data register
+000000r 2               VIA_DDRB = VIA +  2    ; VIA port B data direction register
+000000r 2               VIA_DDRA = VIA +  3    ; VIA port A data direction register
+000000r 2               VIA_T1CL = VIA +  4    ; VIA timer 1 counter low register
+000000r 2               VIA_T1CH = VIA +  5    ; VIA timer 1 counter high register
+000000r 2               VIA_T1LL = VIA +  6    ; VIA timer 1 latch low register
+000000r 2               VIA_T1LH = VIA +  7    ; VIA timer 1 latch high register
+000000r 2               VIA_T2CL = VIA +  8    ; VIA timer 2 counter low register
+000000r 2               VIA_T2CH = VIA +  9    ; VIA timer 2 counter low register
+000000r 2               VIA_SR   = VIA + 10    ; VIA shift register
+000000r 2               VIA_ACR  = VIA + 11    ; VIA peripheral control register
+000000r 2               VIA_PCR  = VIA + 12    ; VIA peripheral control register
+000000r 2               VIA_IFR  = VIA + 13    ; VIA interrupt flag register
+000000r 2               VIA_IER  = VIA + 14    ; VIA interrupt enable register
+000000r 2               
+000000r 1               
+000000r 1                       .export STROUT
+000000r 1                       .export CHROUT
+000000r 1                       .export CHRIN
+000000r 1                       .export UCASE
+000000r 1                       .export SMON
+000000r 1                       .export PRTINT
+000000r 1                       .export LC323
+000000r 1                       .export LC32A
+000000r 1                       .export LOAD
+000000r 1                       .export GO
+000000r 1               
+000000r 1               PCHSAVE         = $02A8         ; PC hi
+000000r 1               PCLSAVE         = $02A9         ; PC lo
+000000r 1               SRSAVE          = $02AA         ; SR
+000000r 1               AKSAVE          = $02AB         ; A
+000000r 1               XRSAVE          = $02AC         ; XR
+000000r 1               YSAVE           = $02AD         ; YR
+000000r 1               SPSAVE          = $02AE         ; SP
+000000r 1               IRQ_LO          = $0314         ; Vector: Hardware IRQ Interrupt Address Lo
+000000r 1               IRQ_HI          = $0315         ; Vector: Hardware IRQ Interrupt Address Hi
+000000r 1               BRK_LO          = $0316         ; Vector: BRK Lo
+000000r 1               BRK_HI          = $0317         ; Vector: BRK Hi
+000000r 1               CHRIN           = $FFCF         ; Kernal input routine
+000000r 1               CHROUT          = $FFD2         ; Kernal output routine
+000000r 1               STOP            = $FFE1         ; Kernal test STOP routine
+000000r 1               GETIN           = $FFE4         ; Kernal get input routine
+000000r 1               
+000000r 1                       .segment "CODE"
+000000r 1               
+000000r 1               ;;; =========================================================================
+000000r 1               ;;; ENTRY - Cold boot entry point (RESET vector points here)
+000000r 1               ;;; =========================================================================
+000000r 1               ENTRY:
+000000r 1  D8                   cld                     ; Clear decimal mode
+000001r 1  A2 FF                ldx     #$FF            ; Initialize stack pointer
+000003r 1  9A                   txs
+000004r 1  A9 rr                lda     #<SMON          ; Set BRK vector to SMON
+000006r 1  8D 16 03             sta     BRK_LO
+000009r 1  A9 rr                lda     #>SMON
+00000Br 1  8D 17 03             sta     BRK_HI
+00000Er 1  A9 00                lda     #$00            ; Initialize saved registers
+000010r 1  8D A9 02             sta     PCLSAVE
+000013r 1  8D A8 02             sta     PCHSAVE
+000016r 1  8D AA 02             sta     SRSAVE
+000019r 1  8D AB 02             sta     AKSAVE
+00001Cr 1  8D AC 02             sta     XRSAVE
+00001Fr 1  8D AD 02             sta     YSAVE
+000022r 1  A9 FF                lda     #$FF
+000024r 1  8D AE 02             sta     SPSAVE
+000027r 1  20 rr rr             jsr     welcome         ; Print welcome banner
+00002Ar 1  A9 52                lda     #'R'            ; Execute 'R' command to show registers
+00002Cr 1  4C rr rr             jmp     LC2FF           ; Enter command loop with 'R' command
+00002Fr 1               
+00002Fr 1                       ;; help message - summary
+00002Fr 1  53 4D 4F 4E  HLPMSG: .byte   "SMON Monitor Commands - Type H <category> for details"
+000033r 1  20 4D 6F 6E  
+000037r 1  69 74 6F 72  
+000064r 1  0D 0D                .byte  $0d,$0d
+000066r 1  48 20 41 20          .byte   "H A - Assembly:     A D"
+00006Ar 1  2D 20 41 73  
+00006Er 1  73 65 6D 62  
+00007Dr 1  0D                   .byte  $0d
+00007Er 1  48 20 4D 20          .byte   "H M - Memory:       M K : O W = MS MT"
+000082r 1  2D 20 4D 65  
+000086r 1  6D 6F 72 79  
+0000A3r 1  0D                   .byte  $0d
+0000A4r 1  48 20 46 20          .byte   "H F - Find/Search:  F FA FR FZ FI FT ' ,"
+0000A8r 1  2D 20 46 69  
+0000ACr 1  6E 64 2F 53  
+0000CCr 1  0D                   .byte  $0d
+0000CDr 1  48 20 45 20          .byte   "H E - Execution:    G"
+0000D1r 1  2D 20 45 78  
+0000D5r 1  65 63 75 74  
+0000E2r 1                       .if     VIA > 0
+0000E2r 1  20 54 57 20          .byte   " TW TB TQ TS"
+0000E6r 1  54 42 20 54  
+0000EAr 1  51 20 54 53  
+0000EEr 1                       .endif
+0000EEr 1  0D                   .byte  $0d
+0000EFr 1  48 20 43 20          .byte   "H C - Conversion:   # $ % ?"
+0000F3r 1  2D 20 43 6F  
+0000F7r 1  6E 76 65 72  
+00010Ar 1  0D                   .byte  $0d
+00010Br 1  48 20 52 20          .byte   "H R - Registers:    R ;"
+00010Fr 1  2D 20 52 65  
+000113r 1  67 69 73 74  
+000122r 1  0D                   .byte  $0d
+000123r 1  48 20 4F 20          .byte   "H O - Other:        L S C V X H"
+000127r 1  2D 20 4F 74  
+00012Br 1  68 65 72 3A  
+000142r 1  00 00                .byte  $00,$00
+000144r 1               
+000144r 1               HLPMSG_ASM:
+000144r 1  3D 3D 3D 20          .byte   "=== ASSEMBLY & DISASSEMBLY ==="
+000148r 1  41 53 53 45  
+00014Cr 1  4D 42 4C 59  
+000162r 1  0D                   .byte  $0d
+000163r 1  41 20 78 78          .byte   "A xxxx          - Assemble at xxxx (end with 'f', Mxx for label)"
+000167r 1  78 78 20 20  
+00016Br 1  20 20 20 20  
+0001A3r 1  0D                   .byte  $0d
+0001A4r 1  44 20 78 78          .byte   "D xxxx (yyyy)   - Disassemble from xxxx (to yyyy)"
+0001A8r 1  78 78 20 28  
+0001ACr 1  79 79 79 79  
+0001D5r 1  00 00                .byte  $00,$00
+0001D7r 1               
+0001D7r 1               HLPMSG_MEM:
+0001D7r 1  3D 3D 3D 20          .byte   "=== MEMORY OPERATIONS ==="
+0001DBr 1  4D 45 4D 4F  
+0001DFr 1  52 59 20 4F  
+0001F0r 1  0D                   .byte  $0d
+0001F1r 1  4D 20 78 78          .byte   "M xxxx (yyyy)    - Dump memory as HEX"
+0001F5r 1  78 78 20 28  
+0001F9r 1  79 79 79 79  
+000216r 1  0D                   .byte  $0d
+000217r 1  4B 20 78 78          .byte   "K xxxx (yyyy)    - Dump memory as ASCII"
+00021Br 1  78 78 20 28  
+00021Fr 1  79 79 79 79  
+00023Er 1  0D                   .byte  $0d
+00023Fr 1  3A 20 78 78          .byte   ": xxxx aa bb cc  - Edit memory (type hex bytes)"
+000243r 1  78 78 20 61  
+000247r 1  61 20 62 62  
+00026Er 1  0D                   .byte  $0d
+00026Fr 1  4F 20 78 78          .byte   "O xxxx yyyy aa   - Fill memory with aa"
+000273r 1  78 78 20 79  
+000277r 1  79 79 79 20  
+000295r 1  0D                   .byte  $0d
+000296r 1  57 20 78 78          .byte   "W xxxx yyyy zzzz - Copy memory to zzzz"
+00029Ar 1  78 78 20 79  
+00029Er 1  79 79 79 20  
+0002BCr 1  0D                   .byte  $0d
+0002BDr 1  3D 20 78 78          .byte   "= xxxx yyyy      - Compare memory blocks"
+0002C1r 1  78 78 20 79  
+0002C5r 1  79 79 79 20  
+0002E5r 1  0D                   .byte  $0d
+0002E6r 1  4D 53 20 20          .byte   "MS               - Check RAM size"
+0002EAr 1  20 20 20 20  
+0002EEr 1  20 20 20 20  
+000307r 1  0D                   .byte  $0d
+000308r 1  4D 54 20 78          .byte   "MT xxxx yyyy (n) - Test memory (repeat n times)"
+00030Cr 1  78 78 78 20  
+000310r 1  79 79 79 79  
+000337r 1  00 00                .byte  $00,$00
+000339r 1               
+000339r 1               HLPMSG_FIND:
+000339r 1  3D 3D 3D 20          .byte   "=== SEARCH & FIND ==="
+00033Dr 1  53 45 41 52  
+000341r 1  43 48 20 26  
+00034Er 1  0D                   .byte  $0d
+00034Fr 1  46 20 61 61          .byte   "F aa bb..., xx yy - Find byte sequence"
+000353r 1  20 62 62 2E  
+000357r 1  2E 2E 2C 20  
+000375r 1  0D                   .byte  $0d
+000376r 1  46 41 20 61          .byte   "FA aaaa, xxxx yy  - Find absolute address in opcode"
+00037Ar 1  61 61 61 2C  
+00037Er 1  20 78 78 78  
+0003A9r 1  0D                   .byte  $0d
+0003AAr 1  46 52 20 61          .byte   "FR aaaa, xxxx yy  - Find relative address in opcode"
+0003AEr 1  61 61 61 2C  
+0003B2r 1  20 78 78 78  
+0003DDr 1  0D                   .byte  $0d
+0003DEr 1  46 5A 20 61          .byte   "FZ aa, xxxx yyyy  - Find zero-page address"
+0003E2r 1  61 2C 20 78  
+0003E6r 1  78 78 78 20  
+000408r 1  0D                   .byte  $0d
+000409r 1  46 49 20 61          .byte   "FI aa, xxxx yyyy  - Find immediate value"
+00040Dr 1  61 2C 20 78  
+000411r 1  78 78 78 20  
+000431r 1  0D                   .byte  $0d
+000432r 1  46 54 20 78          .byte   "FT xxxx yyyy      - Find table (non-opcode)"
+000436r 1  78 78 78 20  
+00043Ar 1  79 79 79 79  
+00045Dr 1  0D                   .byte  $0d
+00045Er 1  27 20 78 78          .byte   "' xxxx text       - Write ASCII to memory (max 72 chars)"
+000462r 1  78 78 20 74  
+000466r 1  65 78 74 20  
+000496r 1  0D                   .byte  $0d
+000497r 1  2C 20 78 78          .byte   ", xxxx            - Assemble single line"
+00049Br 1  78 78 20 20  
+00049Fr 1  20 20 20 20  
+0004BFr 1  00 00                .byte  $00,$00
+0004C1r 1               
+0004C1r 1               HLPMSG_EXEC:
+0004C1r 1  3D 3D 3D 20          .byte   "=== EXECUTION & CONTROL ==="
+0004C5r 1  45 58 45 43  
+0004C9r 1  55 54 49 4F  
+0004DCr 1  0D                   .byte  $0d
+0004DDr 1  47 20 28 78          .byte   "G (xxxx)        - Run from xxxx or PC"
+0004E1r 1  78 78 78 29  
+0004E5r 1  20 20 20 20  
+000502r 1  0D                   .byte  $0d
+000503r 1                       .if     VIA > 0
+000503r 1  54 57 20 78          .byte   "TW xxxx         - Trace walk (single step)"
+000507r 1  78 78 78 20  
+00050Br 1  20 20 20 20  
+00052Dr 1  0D                   .byte  $0d
+00052Er 1  54 42 20 78          .byte   "TB xxxx nn      - Breakpoint (stop after nn hits)"
+000532r 1  78 78 78 20  
+000536r 1  6E 6E 20 20  
+00055Fr 1  0D                   .byte  $0d
+000560r 1  54 51 20 78          .byte   "TQ xxxx         - Run to breakpoint"
+000564r 1  78 78 78 20  
+000568r 1  20 20 20 20  
+000583r 1  0D                   .byte  $0d
+000584r 1  54 53 20 78          .byte   "TS xxxx         - Run until xxxx"
+000588r 1  78 78 78 20  
+00058Cr 1  20 20 20 20  
+0005A4r 1  0D                   .byte  $0d
+0005A5r 1                       .endif
+0005A5r 1  00 00                .byte  $00,$00
+0005A7r 1               
+0005A7r 1               HLPMSG_CONV:
+0005A7r 1  3D 3D 3D 20          .byte   "=== DATA CONVERSION ==="
+0005ABr 1  44 41 54 41  
+0005AFr 1  20 43 4F 4E  
+0005BEr 1  0D                   .byte  $0d
+0005BFr 1  23 64 64 64          .byte   "#ddd            - Convert DEC to HEX/BIN"
+0005C3r 1  20 20 20 20  
+0005C7r 1  20 20 20 20  
+0005E7r 1  0D                   .byte  $0d
+0005E8r 1  24 78 78 20          .byte   "$xx             - Convert HEX to DEC/BIN"
+0005ECr 1  20 20 20 20  
+0005F0r 1  20 20 20 20  
+000610r 1  0D                   .byte  $0d
+000611r 1  25 62 62 62          .byte   "%bbbbbbbb       - Convert BIN to DEC/HEX"
+000615r 1  62 62 62 62  
+000619r 1  62 20 20 20  
+000639r 1  0D                   .byte  $0d
+00063Ar 1  3F 20 78 78          .byte   "? xxxx+yyyy     - Add two hex numbers"
+00063Er 1  78 78 2B 79  
+000642r 1  79 79 79 20  
+00065Fr 1  0D                   .byte  $0d
+000660r 1  3F 20 78 78          .byte   "? xxxx-yyyy     - Subtract two hex numbers"
+000664r 1  78 78 2D 79  
+000668r 1  79 79 79 20  
+00068Ar 1  0D                   .byte  $0d
+00068Br 1  00 00                .byte  $00,$00
+00068Dr 1               
+00068Dr 1               HLPMSG_REG:
+00068Dr 1  3D 3D 3D 20          .byte   "=== REGISTER OPERATIONS ==="
+000691r 1  52 45 47 49  
+000695r 1  53 54 45 52  
+0006A8r 1  0D                   .byte  $0d
+0006A9r 1  52 20 2D 20          .byte   "R - Display all registers"
+0006ADr 1  44 69 73 70  
+0006B1r 1  6C 61 79 20  
+0006C2r 1  0D                   .byte  $0d
+0006C3r 1  20 20 20 20          .byte   "    PC SR AC XR YR SP NV-BDIZC"
+0006C7r 1  50 43 20 53  
+0006CBr 1  52 20 41 43  
+0006E1r 1  0D                   .byte  $0d
+0006E2r 1  3B 20 20 20          .byte   ";   aa bb cc dd ee ff - Edit registers"
+0006E6r 1  61 61 20 62  
+0006EAr 1  62 20 63 63  
+000708r 1  0D                   .byte  $0d
+000709r 1  20 20 20 28          .byte   "   (PC SR AC XR YR SP)"
+00070Dr 1  50 43 20 53  
+000711r 1  52 20 41 43  
+00071Fr 1  00 00                .byte  $00,$00
+000721r 1               
+000721r 1               HLPMSG_OTHER:
+000721r 1  3D 3D 3D 20          .byte   "=== OTHER COMMANDS ==="
+000725r 1  4F 54 48 45  
+000729r 1  52 20 43 4F  
+000737r 1  0D                   .byte  $0d
+000738r 1  4C 20 20 20          .byte   "L               - Load Intel HEX from terminal"
+00073Cr 1  20 20 20 20  
+000740r 1  20 20 20 20  
+000766r 1  0D                   .byte  $0d
+000767r 1  53 20 78 78          .byte   "S xxxx yyyy     - Save memory as Intel HEX"
+00076Br 1  78 78 20 79  
+00076Fr 1  79 79 79 20  
+000791r 1  0D                   .byte  $0d
+000792r 1  43 20 78 78          .byte   "C xxxx yyyy zzzz aaaa bbbb - Convert (V then W)"
+000796r 1  78 78 20 79  
+00079Ar 1  79 79 79 20  
+0007C1r 1  0D                   .byte  $0d
+0007C2r 1  56 20 78 78          .byte   "V xxxx yyyy zzzz aaaa bbbb - Convert addresses"
+0007C6r 1  78 78 20 79  
+0007CAr 1  79 79 79 20  
+0007F0r 1  0D                   .byte  $0d
+0007F1r 1  58 20 20 20          .byte   "X               - Cold restart (reset monitor)"
+0007F5r 1  20 20 20 20  
+0007F9r 1  20 20 20 20  
+00081Fr 1  0D                   .byte  $0d
+000820r 1  48 20 20 20          .byte   "H               - Display help summary"
+000824r 1  20 20 20 20  
+000828r 1  20 20 20 20  
+000846r 1  0D                   .byte  $0d
+000847r 1  48 20 3C 6C          .byte   "H <letter>      - Detailed help (A M F E C R O)"
+00084Br 1  65 74 74 65  
+00084Fr 1  72 3E 20 20  
+000876r 1  00 00                .byte  $00,$00
+000878r 1               
+000878r 1               ;;; Welcome message and banner
+000878r 1               welmsg:
+000878r 1  0D                   .byte $0D
+000879r 1  53 4D 4F 4E          .byte "SMON by Norfried Mann and Dietrich Weineck"
+00087Dr 1  20 62 79 20  
+000881r 1  4E 6F 72 66  
+0008A3r 1  0D                   .byte $0D
+0008A4r 1  41 64 61 70          .byte "Adapted to a minimal 6502 system by David Hansel (2023)"
+0008A8r 1  74 65 64 20  
+0008ACr 1  74 6F 20 61  
+0008DBr 1  0D                   .byte $0D
+0008DCr 1  4D 6F 64 69          .byte "Modified for Retroshield by kayto@github.com"
+0008E0r 1  66 69 65 64  
+0008E4r 1  20 66 6F 72  
+000908r 1  0D                   .byte $0D
+000909r 1  54 79 70 65          .byte "Type H for help"
+00090Dr 1  20 48 20 66  
+000911r 1  6F 72 20 68  
+000918r 1  0D                   .byte $0D
+000919r 1  00                   .byte $00
+00091Ar 1               
+00091Ar 1               welcome:
+00091Ar 1  A0 rr                ldy     #>welmsg
+00091Cr 1  A9 rr                lda     #<welmsg
+00091Er 1  4C rr rr             jmp     STROUT          ; Tail call
+000921r 1               
+000921r 1                       ;; commands
+000921r 1  27 23 24 25  ICMD:   .byte "'#$%,:;=?ACDFGHKLMORSTW X",$0d
+000925r 1  2C 3A 3B 3D  
+000929r 1  3F 41 43 44  
+00093Br 1  00 00 00 00  ICMDE:  .byte $00,$00,$00,$00,$00
+00093Fr 1  00           
+000940r 1               
+000940r 1                       ;; command entry point addresses
+000940r 1  rr rr        IOFS:   .byte   <(TICK-1),>(TICK-1)             ; '
+000942r 1  rr rr                .byte   <(BEFDEC-1),>(BEFDEC-1)         ; #
+000944r 1  rr rr                .byte   <(BEFHEX-1),>(BEFHEX-1)         ; $
+000946r 1  rr rr                .byte   <(BEFBIN-1),>(BEFBIN-1)         ; %
+000948r 1  rr rr                .byte   <(COMMA-1),>(COMMA-1)           ; ,
+00094Ar 1  rr rr                .byte   <(COLON-1),>(COLON-1)           ; :
+00094Cr 1  rr rr                .byte   <(SEMI-1),>(SEMI-1)             ; ;
+00094Er 1  rr rr                .byte   <(EQUALS-1),>(EQUALS-1)         ; =
+000950r 1  rr rr                .byte   <(ADDSUB-1),>(ADDSUB-1)         ; ? (arithmetic)
+000952r 1  rr rr                .byte   <(ASSEMBLER-1),>(ASSEMBLER-1)   ; A
+000954r 1  rr rr                .byte   <(CONVERT-1),>(CONVERT-1)       ; C
+000956r 1  rr rr                .byte   <(DISASS-1),>(DISASS-1)         ; D
+000958r 1  rr rr                .byte   <(FIND-1),>(FIND-1)             ; F
+00095Ar 1  rr rr                .byte   <(GO-1),>(GO-1)                 ; G
+00095Cr 1  rr rr                .byte   <(HELP-1),>(HELP-1)             ; H
+00095Er 1  rr rr                .byte   <(KONTROLLE-1),>(KONTROLLE-1)   ; K
+000960r 1  rr rr                .byte   <(LOAD-1),>(LOAD-1)             ; L
+000962r 1  rr rr                .byte   <(MEMDUMP-1),>(MEMDUMP-1)       ; M
+000964r 1  rr rr                .byte   <(OCCUPY-1),>(OCCUPY-1)         ; O
+000966r 1  rr rr                .byte   <(REGISTER-1),>(REGISTER-1)     ; R
+000968r 1  rr rr                .byte   <(SAVE-1),>(SAVE-1)             ; S
+00096Ar 1  rr rr                .byte   <(TRACE-1),>(TRACE-1)           ; T
+00096Cr 1  rr rr                .byte   <(MOVE-1),>(MOVE-1)             ; V
+00096Er 1  rr rr                .byte   <(WRITE-1),>(WRITE-1)           ; W
+000970r 1  rr rr                .byte   <(SHELLCMD_MON-1),>(SHELLCMD_MON-1) ; X
+000972r 1               
+000972r 1                       ;; output line start characters
+000972r 1  27 3A 3B 2C  LC061:  .byte   "':;,()!"
+000976r 1  28 29 21     
+000979r 1  00 00 00             .byte   $00,$00,$00
+00097Cr 1               
+00097Cr 1  FF FF 01 00  LC06B:  .byte   $FF,$FF,$01,$00
+000980r 1               
+000980r 1                       ;; sub-commands for "find" (F)
+000980r 1  41 5A 49 52  FSCMD:  .byte   "AZIRT"
+000984r 1  54           
+000985r 1                       ;; "find" sub-command
+000985r 1  80 20 40 10  LC074:  .byte   $80,$20,$40,$10,$00
+000989r 1  00           
+00098Ar 1                       ;; "find" sub-command data length (2=word,1=byte,0=none)
+00098Ar 1  02 01 01 02  LC079:  .byte   $02,$01,$01,$02,$00
+00098Er 1  00           
+00098Fr 1               
+00098Fr 1  0D 0D 20 20  REGHDR: .byte   $0D,$0D,"  PC  SR AC XR YR SP  NV-BDIZC",$00
+000993r 1  50 43 20 20  
+000997r 1  53 52 20 41  
+0009B0r 1  02 04 01     LC0AD:  .byte   $02,$04,$01
+0009B3r 1  2C 00 2C     LC0B0:  .byte   $2C,$00,$2C
+0009B6r 1  59 29 58     LC0B3:  .byte   $59,$29,$58
+0009B9r 1  9D 1F FF 1C  LC0B6:  .byte   $9D,$1F,$FF,$1C,$1C,$1F,$1F
+0009BDr 1  1C 1F 1F     
+0009C0r 1  1F 1C DF 1C          .byte   $1F,$1C,$DF,$1C,$1F,$DF,$FF,$FF
+0009C4r 1  1F DF FF FF  
+0009C8r 1  03 1F                .byte   $03,$1F
+0009CAr 1  80 09 20 0C  LC0C7:  .byte   $80,$09,$20,$0C,$04,$10,$01
+0009CEr 1  04 10 01     
+0009D1r 1  11 14 96 1C          .byte   $11,$14,$96,$1C,$19,$94,$BE,$6C
+0009D5r 1  19 94 BE 6C  
+0009D9r 1  03 13 01             .byte   $03,$13,$01
+0009DCr 1  02 02 03 03  LC0D9:  .byte   $02,$02,$03,$03,$02,$02,$02
+0009E0r 1  02 02 02     
+0009E3r 1  02 02 02 03          .byte   $02,$02,$02,$03,$03,$02,$03,$03
+0009E7r 1  03 02 03 03  
+0009EBr 1  03 02 00             .byte   $03,$02,$00
+0009EEr 1  40 40 80 80  LC0EB:  .byte   $40,$40,$80,$80,$20,$10,$25
+0009F2r 1  20 10 25     
+0009F5r 1  26 21 22 81          .byte   $26,$21,$22,$81,$82,$21,$82,$84
+0009F9r 1  82 21 82 84  
+0009FDr 1  08 08                .byte   $08,$08
+0009FFr 1  E7 E7 E7 E7  LC0FC:  .byte   $E7,$E7,$E7,$E7,$E3,$E3,$E3
+000A03r 1  E3 E3 E3     
+000A06r 1  E3 E3 E3 E3          .byte   $E3,$E3,$E3,$E3,$E3,$E3,$E3,$E7
+000A0Ar 1  E3 E3 E3 E7  
+000A0Er 1  A7 E7 E7 F3          .byte   $A7,$E7,$E7,$F3,$F3,$F7,$DF
+000A12r 1  F3 F7 DF     
+000A15r 1               
+000A15r 1                       ;; opcodes (in same order as mnemonics below)
+000A15r 1  26 46 06 66  OPC:    .byte   $26,$46,$06,$66,$41,$81,$E1
+000A19r 1  41 81 E1     
+000A1Cr 1  01 A0 A2 A1          .byte   $01,$A0,$A2,$A1,$C1,$21,$61,$84
+000A20r 1  C1 21 61 84  
+000A24r 1  86 E6 C6 E0          .byte   $86,$E6,$C6,$E0,$C0,$24,$4C,$20
+000A28r 1  C0 24 4C 20  
+000A2Cr 1  90 B0 F0 30          .byte   $90,$B0,$F0,$30,$D0,$10,$50,$70
+000A30r 1  D0 10 50 70  
+000A34r 1  78 00 18 D8          .byte   $78,$00,$18,$D8,$58,$B8,$CA,$88
+000A38r 1  58 B8 CA 88  
+000A3Cr 1  E8 C8 EA 48          .byte   $E8,$C8,$EA,$48
+000A40r 1               
+000A40r 1  08 68 28 40  LC13D:  .byte   $08,$68,$28,$40,$60,$AA,$A8
+000A44r 1  60 AA A8     
+000A47r 1  BA 8A 9A 98          .byte   $BA,$8A,$9A,$98,$38,$F8
+000A4Br 1  38 F8        
+000A4Dr 1  89 9C 9E B2  LC14A:  .byte   $89,$9C,$9E,$B2
+000A51r 1  2A 4A 0A 6A  LC14E:  .byte   $2A,$4A,$0A,$6A,$4F,$23,$93
+000A55r 1  4F 23 93     
+000A58r 1  B3 F3 33 D3          .byte   $B3,$F3,$33,$D3,$13,$53,$73
+000A5Cr 1  13 53 73     
+000A5Fr 1               
+000A5Fr 1                       ;; first, second and third characters of opcode mnemonics
+000A5Fr 1  52 4C 41 52  OPMN1:   .byte "RLARESSOLLLCAASSIDCCBJJBBBBBBBBSBCCCCDDIINPPPPRRTTTTTTSS"
+000A63r 1  45 53 53 4F  
+000A67r 1  4C 4C 4C 43  
+000A97r 1  4F 53 53 4F  OPMN2:   .byte "OSSOOTBRDDDMNDTTNEPPIMSCCEMNPVVERLLLLEENNOHHLLTTAASXXYEE"
+000A9Br 1  4F 54 42 52  
+000A9Fr 1  44 44 44 4D  
+000ACFr 1  4C 52 4C 52  OPMN3:   .byte "LRLRRACAYXAPDCYXCCXYTPRCSQIELCSIKCDIVXYXYPAPAPISXYXASACD"
+000AD3r 1  52 41 43 41  
+000AD7r 1  59 58 41 50  
+000B07r 1               
+000B07r 1  08 84 81 22  LC204:  .byte   $08,$84,$81,$22,$21,$26,$20,$80
+000B0Br 1  21 26 20 80  
+000B0Fr 1  03 20 1C 14  LC20C:  .byte   $03,$20,$1C,$14,$14,$10,$04,$0C
+000B13r 1  14 10 04 0C  
+000B17r 1               
+000B17r 1               ;;; =========================================================================
+000B17r 1               ;;; SMON - BRK instruction entry point
+000B17r 1               ;;; CPU pushes PCH, PCL, SR then jumps here via BRK vector
+000B17r 1               ;;; =========================================================================
+000B17r 1  D8           SMON:   cld
+000B18r 1  A2 05                ldx     #$05
+000B1Ar 1               @save_regs:
+000B1Ar 1  68                   pla
+000B1Br 1  9D A8 02             sta     PCHSAVE,x       ; Save PCH, PCL, SR, A, X, Y from stack
+000B1Er 1  CA                   dex
+000B1Fr 1  10 F9                bpl     @save_regs
+000B21r 1                       ;; Adjust PC (BRK pushes PC+2, we want PC+1)
+000B21r 1  AD A9 02             lda     PCLSAVE
+000B24r 1  D0 03                bne     @no_borrow
+000B26r 1  CE A8 02             dec     PCHSAVE
+000B29r 1               @no_borrow:
+000B29r 1  CE A9 02             dec     PCLSAVE
+000B2Cr 1  BA                   tsx
+000B2Dr 1  8E AE 02             stx     SPSAVE          ; Save stack pointer
+000B30r 1  A9 52                lda     #'R'            ; Execute 'R' command to show registers
+000B32r 1  4C rr rr             jmp     LC2FF           ; Enter command loop with 'R' command
+000B35r 1               
+000B35r 1               ;;; =========================================================================
+000B35r 1               ;;; SHELLCMD_MON - X command: Cold restart (reinitialize and show banner)
+000B35r 1               ;;; =========================================================================
+000B35r 1               SHELLCMD_MON:
+000B35r 1  4C rr rr             jmp     ENTRY           ; Full cold restart
+000B38r 1               
+000B38r 1               ;;; Helper for GO command - load saved SP into X
+000B38r 1  AD AE 02     LB7B2:  lda     SPSAVE
+000B3Br 1  AA                   tax
+000B3Cr 1               
+000B3Cr 1  20 rr rr     LC249:  jsr     PEEKCH
+000B3Fr 1  F0 0B                beq     LC259
+000B41r 1  20 rr rr     LC24E:  jsr     GETWRD
+000B44r 1  8D A9 02             sta     PCLSAVE
+000B47r 1  A5 FC                lda     $FC
+000B49r 1  8D A8 02             sta     PCHSAVE
+000B4Cr 1  60           LC259:  rts
+000B4Dr 1               
+000B4Dr 1                       ;; get 3 words into $A4-$A9
+000B4Dr 1  A2 A4        LC25A:  ldx     #$A4
+000B4Fr 1  20 rr rr             jsr     GETWRDX
+000B52r 1  20 rr rr             jsr     GETWRDX
+000B55r 1  D0 1C                bne     GETWRDX
+000B57r 1               
+000B57r 1                       ;; get start (FB/FC) and end (FD/FE) address from command line
+000B57r 1                       ;; end address is optional, defaults to $FFFE
+000B57r 1  20 rr rr     GETSE:  jsr     GETWRD           ; get word from command line
+000B5Ar 1  A9 FE                lda     #$FE
+000B5Cr 1  85 FD                sta     $FD
+000B5Er 1  A9 FF                lda     #$FF
+000B60r 1  85 FE                sta     $FE
+000B62r 1  20 rr rr             jsr     PEEKCH          ; is there more command line input?
+000B65r 1  D0 0C                bne     GETWRDX         ; yes, get another word
+000B67r 1  8D 77 02             sta     $0277           ; put NUL into keyboard buffer
+000B6Ar 1  E6 C6                inc     $C6
+000B6Cr 1  60                   rts
+000B6Dr 1               
+000B6Dr 1                       ;; get two words from command line, store in $FB/$FC and $FD/$FE
+000B6Dr 1  20 rr rr     GETDW:  jsr     GETWRD
+000B70r 1  2C                   .byte  $2C              ; skip next (2-byte) opcode
+000B71r 1               
+000B71r 1                       ;; get word from command line, store in $FB/$FC
+000B71r 1  A2 FB        GETWRD: ldx     #$FB
+000B73r 1               
+000B73r 1                       ;; get word from command line, store in (X)/(X+1)
+000B73r 1  20 rr rr     GETWRDX:jsr     LC28D
+000B76r 1  95 01                sta     $01,x
+000B78r 1  20 rr rr             jsr     GETBYT
+000B7Br 1  95 00                sta     $00,x
+000B7Dr 1  E8                   inx
+000B7Er 1  E8                   inx
+000B7Fr 1  60                   rts
+000B80r 1               
+000B80r 1                       ;; get byte from command line, ignore leading " " and ","
+000B80r 1  20 rr rr     LC28D:  jsr     GETCHR
+000B83r 1  C9 20                cmp     #$20
+000B85r 1  F0 F9                beq     LC28D
+000B87r 1  C9 2C                cmp     #$2C
+000B89r 1  F0 F5                beq     LC28D
+000B8Br 1  D0 03                bne     LC29D
+000B8Dr 1               
+000B8Dr 1                       ;; get byte from command line, return in A
+000B8Dr 1  20 rr rr     GETBYT: jsr     GETCHR       ; get character
+000B90r 1  20 rr rr     LC29D:  jsr     LC2AF        ; convert to 0-15
+000B93r 1  0A                   asl
+000B94r 1  0A                   asl
+000B95r 1  0A                   asl
+000B96r 1  0A                   asl
+000B97r 1  85 B4                sta     $B4
+000B99r 1  20 rr rr             jsr     GETCHR       ; get character
+000B9Cr 1  20 rr rr             jsr     LC2AF        ; convert to 0-15
+000B9Fr 1  05 B4                ora     $B4
+000BA1r 1  60                   rts
+000BA2r 1               
+000BA2r 1                       ;; convert character in A from ASCII HEX to 0-15
+000BA2r 1  C9 3A        LC2AF:  cmp     #$3A
+000BA4r 1  90 02                bcc     LC2B5
+000BA6r 1  69 08                adc     #$08
+000BA8r 1  29 0F        LC2B5:  and     #$0F
+000BAAr 1  60                   rts
+000BABr 1               
+000BABr 1                       ;; skip spaces from command line
+000BABr 1  20 rr rr     LC2B8:  jsr     GETCHR
+000BAEr 1  C9 20                cmp     #$20
+000BB0r 1  F0 F9                beq     LC2B8
+000BB2r 1  C6 D3                dec     $D3
+000BB4r 1  60                   rts
+000BB5r 1               
+000BB5r 1                       ;; peek whether next character on command line is CR (Z set if so)
+000BB5r 1  20 CF FF     PEEKCH: jsr     CHRIN
+000BB8r 1  C6 D3                dec     $D3
+000BBAr 1  C9 0D                cmp     #$0D
+000BBCr 1  60           LC2C9:  rts
+000BBDr 1               
+000BBDr 1                       ;; convert character in A to uppercase
+000BBDr 1  C9 61        UCASE:  cmp     #'a'
+000BBFr 1  90 06                bcc     UCASE1
+000BC1r 1  C9 7B                cmp     #'z'+1
+000BC3r 1  B0 02                bcs     UCASE1
+000BC5r 1  29 DF                and     #$DF
+000BC7r 1  60           UCASE1: rts
+000BC8r 1               
+000BC8r 1                       ;; get next character from command line, error if CR (end of line)
+000BC8r 1  20 CF FF     GETCHR: jsr     CHRIN
+000BCBr 1  20 rr rr             jsr     UCASE
+000BCEr 1  C9 0D        GETCL1: cmp     #$0D
+000BD0r 1  D0 EA                bne     LC2C9
+000BD2r 1               
+000BD2r 1                       ; invalid input
+000BD2r 1  A9 3F        ERROR:  lda     #$3F                    ; print "?"
+000BD4r 1  20 D2 FF             jsr     CHROUT
+000BD7r 1               
+000BD7r 1                       ;; main loop
+000BD7r 1  AE AE 02     LC2D6:  ldx     SPSAVE
+000BDAr 1  9A                   txs
+000BDBr 1  A2 00                ldx     #$00                    ; clear keyboard buffer
+000BDDr 1  86 C6                stx     $C6
+000BDFr 1  A5 D3                lda     $D3                     ; get cursor column
+000BE1r 1  F0 03                beq     SKIPCR                  ; jump if zero
+000BE3r 1  20 rr rr             jsr     LC351                   ; print CR
+000BE6r 1  A1 D1        SKIPCR: lda     ($D1,x)                 ; get first character of next line
+000BE8r 1  A2 06                ldx     #$06                    ; compare to known line start characters: ':;,()
+000BEAr 1  DD rr rr     LC2E5:  cmp     LC061,x
+000BEDr 1  F0 08                beq     LC2F2                   ; skip prompt if found
+000BEFr 1  CA                   dex
+000BF0r 1  10 F8                bpl     LC2E5
+000BF2r 1  A9 2E                lda     #$2E                    ; print prompt (".")
+000BF4r 1  20 D2 FF             jsr     CHROUT
+000BF7r 1  20 rr rr     LC2F2:  jsr     GETCHR                  ; await next input
+000BFAr 1  C9 2E                cmp     #$2E
+000BFCr 1  F0 F9                beq     LC2F2                   ; ignore leading "."
+000BFEr 1  4C rr rr             jmp     LC2FF
+000C01r 1  4C rr rr     LC2FC:  jmp     ERROR
+000C04r 1               
+000C04r 1                       ;; find user command in A
+000C04r 1  85 AC        LC2FF:  sta     $AC
+000C06r 1  29 7F                and     #$7F
+000C08r 1  A2 1A                ldx     #ICMDE-ICMD
+000C0Ar 1  DD rr rr     FNDCMD: cmp     ICMD-1,x                       ; compare command char
+000C0Dr 1  F0 05                beq     LC30F                          ; found valid command
+000C0Fr 1  CA                   dex                                    ; next command char
+000C10r 1  D0 F8                bne     FNDCMD                         ; loop until we checked all command chars
+000C12r 1  F0 ED                beq     LC2FC                          ; no match => error
+000C14r 1  20 rr rr     LC30F:  jsr     LC315                          ; execute command
+000C17r 1  4C rr rr             jmp     LC2D6                          ; back to main loop
+000C1Ar 1               
+000C1Ar 1                       ;; execute command specified by index in X
+000C1Ar 1  8A           LC315:  txa                                    ; X = X*2+1
+000C1Br 1  0A                   asl
+000C1Cr 1  AA                   tax
+000C1Dr 1  E8                   inx
+000C1Er 1  BD rr rr             lda     IOFS-2,x                       ; low address
+000C21r 1  48                   pha                                    ; on stack
+000C22r 1  CA                   dex
+000C23r 1  BD rr rr             lda     IOFS-2,x                       ; high address
+000C26r 1  48                   pha                                    ; on stack
+000C27r 1  60                   rts                                    ; execute command
+000C28r 1               
+000C28r 1                       ;; output data word in FB/FC
+000C28r 1  A5 FC        LC323:  lda     $FC
+000C2Ar 1  20 rr rr             jsr     LC32A
+000C2Dr 1  A5 FB                lda     $FB
+000C2Fr 1               
+000C2Fr 1                       ;; output data byte in A as HEX
+000C2Fr 1  48           LC32A:  pha
+000C30r 1  4A                   lsr
+000C31r 1  4A                   lsr
+000C32r 1  4A                   lsr
+000C33r 1  4A                   lsr
+000C34r 1  20 rr rr             jsr     LC335
+000C37r 1  68                   pla
+000C38r 1  29 0F                and     #$0F
+000C3Ar 1  C9 0A        LC335:  cmp     #$0A
+000C3Cr 1  90 02                bcc     LC33B
+000C3Er 1  69 06                adc     #$06
+000C40r 1  69 30        LC33B:  adc     #$30
+000C42r 1  4C D2 FF             jmp     CHROUT
+000C45r 1               
+000C45r 1                       ;; output CR, followed by character in X
+000C45r 1  A9 0D        LC340:  lda     #$0D
+000C47r 1  20 D2 FF     LC342:  jsr     CHROUT
+000C4Ar 1  8A                   txa
+000C4Br 1  4C D2 FF             jmp     CHROUT
+000C4Er 1               
+000C4Er 1                       ;; output two SPACE
+000C4Er 1  20 rr rr     LC349:  jsr     LC34C
+000C51r 1               
+000C51r 1                       ;; output SPACE
+000C51r 1  A9 20        LC34C:  lda     #$20
+000C53r 1  4C D2 FF             jmp     CHROUT
+000C56r 1               
+000C56r 1                       ;; output CR
+000C56r 1  A9 0D        LC351:  lda     #$0D
+000C58r 1  4C D2 FF             jmp     CHROUT
+000C5Br 1               
+000C5Br 1                       ;; print 0-terminated string pointed to by A/Y
+000C5Br 1  85 BB        STROUT: sta     $BB
+000C5Dr 1  84 BC                sty     $BC
+000C5Fr 1  A0 00                ldy     #$00
+000C61r 1  B1 BB        STROUT1:lda     ($BB),y
+000C63r 1  F0 0B                beq     LC366
+000C65r 1  20 D2 FF             jsr     CHROUT
+000C68r 1  E6 BB                inc     $BB
+000C6Ar 1  D0 F5                bne     STROUT1
+000C6Cr 1  E6 BC                inc     $BC
+000C6Er 1  D0 F1                bne     STROUT1
+000C70r 1  60           LC366:  rts
+000C71r 1               
+000C71r 1                       ;; increment address in $FB/$FC
+000C71r 1  E6 FB        LC367:  inc     $FB
+000C73r 1  D0 02                bne     LC36D
+000C75r 1  E6 FC                inc     $FC
+000C77r 1  60           LC36D:  rts
+000C78r 1               
+000C78r 1                       ;; HELP (H) - summary or detailed help
+000C78r 1  20 CF FF     HELP:   jsr     CHRIN           ; get next character (don't error on CR)
+000C7Br 1  20 rr rr             jsr     UCASE           ; convert to uppercase
+000C7Er 1  C9 20                cmp     #$20            ; is it space?
+000C80r 1  F0 F6                beq     HELP            ; skip spaces
+000C82r 1  C9 0D                cmp     #$0D            ; is it CR?
+000C84r 1  F0 3F                beq     HELP_SUMMARY    ; show summary if no parameter
+000C86r 1  C9 3F                cmp     #'?'            ; is it ?
+000C88r 1  F0 3B                beq     HELP_SUMMARY    ; show summary for H?
+000C8Ar 1                       ; Check for category letter (uppercase)
+000C8Ar 1  C9 41                cmp     #'A'
+000C8Cr 1  F0 43                beq     HELP_ASM
+000C8Er 1  C9 4D                cmp     #'M'
+000C90r 1  F0 4B                beq     HELP_MEM
+000C92r 1  C9 46                cmp     #'F'
+000C94r 1  F0 53                beq     HELP_FIND
+000C96r 1  C9 45                cmp     #'E'
+000C98r 1  F0 5B                beq     HELP_EXEC
+000C9Ar 1  C9 43                cmp     #'C'
+000C9Cr 1  F0 63                beq     HELP_CONV
+000C9Er 1  C9 52                cmp     #'R'
+000CA0r 1  F0 6B                beq     HELP_REG
+000CA2r 1  C9 4F                cmp     #'O'
+000CA4r 1  F0 73                beq     HELP_OTHER
+000CA6r 1                       ; Check for lowercase letters
+000CA6r 1  C9 61                cmp     #'a'
+000CA8r 1  F0 27                beq     HELP_ASM
+000CAAr 1  C9 6D                cmp     #'m'
+000CACr 1  F0 2F                beq     HELP_MEM
+000CAEr 1  C9 66                cmp     #'f'
+000CB0r 1  F0 37                beq     HELP_FIND
+000CB2r 1  C9 65                cmp     #'e'
+000CB4r 1  F0 3F                beq     HELP_EXEC
+000CB6r 1  C9 63                cmp     #'c'
+000CB8r 1  F0 47                beq     HELP_CONV
+000CBAr 1  C9 72                cmp     #'r'
+000CBCr 1  F0 4F                beq     HELP_REG
+000CBEr 1  C9 6F                cmp     #'o'
+000CC0r 1  F0 57                beq     HELP_OTHER
+000CC2r 1                       ; Unknown category, show summary
+000CC2r 1  4C rr rr             jmp     HELP_SUMMARY
+000CC5r 1               
+000CC5r 1               HELP_SUMMARY:
+000CC5r 1  A9 rr                lda     #<HLPMSG
+000CC7r 1  85 BB                sta     $BB
+000CC9r 1  A9 rr                lda     #>HLPMSG
+000CCBr 1  85 BC                sta     $BC
+000CCDr 1  20 rr rr             jsr     HELP_PRINT
+000CD0r 1  60                   rts
+000CD1r 1               HELP_ASM:
+000CD1r 1  A9 rr                lda     #<HLPMSG_ASM
+000CD3r 1  85 BB                sta     $BB
+000CD5r 1  A9 rr                lda     #>HLPMSG_ASM
+000CD7r 1  85 BC                sta     $BC
+000CD9r 1  20 rr rr             jsr     HELP_PRINT
+000CDCr 1  60                   rts
+000CDDr 1               HELP_MEM:
+000CDDr 1  A9 rr                lda     #<HLPMSG_MEM
+000CDFr 1  85 BB                sta     $BB
+000CE1r 1  A9 rr                lda     #>HLPMSG_MEM
+000CE3r 1  85 BC                sta     $BC
+000CE5r 1  20 rr rr             jsr     HELP_PRINT
+000CE8r 1  60                   rts
+000CE9r 1               HELP_FIND:
+000CE9r 1  A9 rr                lda     #<HLPMSG_FIND
+000CEBr 1  85 BB                sta     $BB
+000CEDr 1  A9 rr                lda     #>HLPMSG_FIND
+000CEFr 1  85 BC                sta     $BC
+000CF1r 1  20 rr rr             jsr     HELP_PRINT
+000CF4r 1  60                   rts
+000CF5r 1               HELP_EXEC:
+000CF5r 1  A9 rr                lda     #<HLPMSG_EXEC
+000CF7r 1  85 BB                sta     $BB
+000CF9r 1  A9 rr                lda     #>HLPMSG_EXEC
+000CFBr 1  85 BC                sta     $BC
+000CFDr 1  20 rr rr             jsr     HELP_PRINT
+000D00r 1  60                   rts
+000D01r 1               HELP_CONV:
+000D01r 1  A9 rr                lda     #<HLPMSG_CONV
+000D03r 1  85 BB                sta     $BB
+000D05r 1  A9 rr                lda     #>HLPMSG_CONV
+000D07r 1  85 BC                sta     $BC
+000D09r 1  20 rr rr             jsr     HELP_PRINT
+000D0Cr 1  60                   rts
+000D0Dr 1               HELP_REG:
+000D0Dr 1  A9 rr                lda     #<HLPMSG_REG
+000D0Fr 1  85 BB                sta     $BB
+000D11r 1  A9 rr                lda     #>HLPMSG_REG
+000D13r 1  85 BC                sta     $BC
+000D15r 1  20 rr rr             jsr     HELP_PRINT
+000D18r 1  60                   rts
+000D19r 1               HELP_OTHER:
+000D19r 1  A9 rr                lda     #<HLPMSG_OTHER
+000D1Br 1  85 BB                sta     $BB
+000D1Dr 1  A9 rr                lda     #>HLPMSG_OTHER
+000D1Fr 1  85 BC                sta     $BC
+000D21r 1  20 rr rr             jsr     HELP_PRINT
+000D24r 1  60                   rts
+000D25r 1               
+000D25r 1                       ;; Print help message at $BB/$BC
+000D25r 1               HELP_PRINT:
+000D25r 1  A0 00                ldy     #$00
+000D27r 1  A9 0D        HLPL1:  lda     #$0D            ; output CR
+000D29r 1  20 D2 FF             jsr     CHROUT
+000D2Cr 1  20 rr rr             jsr     STROUT1         ; output string until 0
+000D2Fr 1  C8                   iny                     ; next byte
+000D30r 1  C0 14                cpy     #20             ; are we at line 20?
+000D32r 1  D0 07                bne     HLPL2           ; jump if not
+000D34r 1  A9 20                lda     #' '            ; put SPACE in keyboard buffer
+000D36r 1  8D 77 02             sta     $0277           ; (to pause output)
+000D39r 1  E6 C6                inc     $C6
+000D3Br 1  20 rr rr     HLPL2:  jsr     LC472           ; check for PAUSE,STOP
+000D3Er 1  B1 BB                lda     ($BB),y         ; get first byte of next string
+000D40r 1  D0 E5                bne     HLPL1           ; loop if not 0
+000D42r 1  60                   rts
+000D43r 1               
+000D43r 1                       ;; REGISTER (R)
+000D43r 1               REGISTER:
+000D43r 1  A0 rr                ldy     #>REGHDR
+000D45r 1  A9 rr                lda     #<REGHDR
+000D47r 1  20 rr rr             jsr     STROUT
+000D4Ar 1  A2 3B                ldx     #$3B
+000D4Cr 1  20 rr rr             jsr     LC340
+000D4Fr 1  AD A8 02             lda     PCHSAVE
+000D52r 1  85 FC                sta     $FC
+000D54r 1  AD A9 02             lda     PCLSAVE
+000D57r 1  85 FB                sta     $FB
+000D59r 1  20 rr rr             jsr     LC323
+000D5Cr 1  20 rr rr             jsr     LC34C
+000D5Fr 1  A2 FB                ldx     #$FB
+000D61r 1  BD AF 01     LC3A4:  lda     $01AF,x
+000D64r 1  20 rr rr             jsr     LC32A
+000D67r 1  20 rr rr             jsr     LC34C
+000D6Ar 1  E8                   inx
+000D6Br 1  D0 F4                bne     LC3A4
+000D6Dr 1  AD AA 02             lda     SRSAVE
+000D70r 1  4C rr rr             jmp     LC3D0
+000D73r 1               
+000D73r 1                       ;; Semicolon (; - edit register)
+000D73r 1  20 rr rr     SEMI:   jsr     LC24E
+000D76r 1  A2 FB                ldx     #$FB
+000D78r 1  20 rr rr     LC3BB:  jsr     GETCHR
+000D7Br 1  20 rr rr             jsr     GETBYT
+000D7Er 1  9D AF 01             sta     $01AF,x
+000D81r 1  E8                   inx
+000D82r 1  D0 F4                bne     LC3BB
+000D84r 1  20 rr rr             jsr     LC34C
+000D87r 1  BD AA 02             lda     SRSAVE,x
+000D8Ar 1  4C rr rr             jmp     LC3D0
+000D8Dr 1  85 AA        LC3D0:  sta     $AA
+000D8Fr 1  A9 20                lda     #$20
+000D91r 1  A0 09                ldy     #$09
+000D93r 1  20 D2 FF     LC3D6:  jsr     CHROUT
+000D96r 1  06 AA                asl     $AA
+000D98r 1  A9 30                lda     #$30
+000D9Ar 1  69 00                adc     #$00
+000D9Cr 1  88                   dey
+000D9Dr 1  D0 F4                bne     LC3D6
+000D9Fr 1  60                   rts
+000DA0r 1               
+000DA0r 1                       ;; GO (G)
+000DA0r 1  20 rr rr     GO:     jsr     LC249
+000DA3r 1  AE AE 02             ldx     SPSAVE
+000DA6r 1  9A                   txs
+000DA7r 1  A2 FA                ldx     #$FA
+000DA9r 1  BD AE 01     LC3EC:  lda     $01AE,x
+000DACr 1  48                   pha
+000DADr 1  E8                   inx
+000DAEr 1  D0 F9                bne     LC3EC
+000DB0r 1  68                   pla
+000DB1r 1  A8                   tay
+000DB2r 1  68                   pla
+000DB3r 1  AA                   tax
+000DB4r 1  68                   pla
+000DB5r 1  40                   rti
+000DB6r 1               
+000DB6r 1                       ;; LOAD (L)
+000DB6r 1  A9 0D        LOAD:   lda     #13
+000DB8r 1  20 D2 FF             jsr     CHROUT
+000DBBr 1  20 rr rr     LDNXT:  jsr     LAB_WAIT_Rx     ; get character from UART
+000DBEr 1  C9 20                cmp     #' '
+000DC0r 1  F0 F9                beq     LDNXT           ; ignore space at beginning of line
+000DC2r 1  C9 0D                cmp     #13
+000DC4r 1  F0 F5                beq     LDNXT           ; ignore CR at beginning of line
+000DC6r 1  C9 0A                cmp     #10
+000DC8r 1  F0 F1                beq     LDNXT           ; ignore LF at beginning of line
+000DCAr 1  C9 1B                cmp     #27
+000DCCr 1  F0 5C                beq     LDBRK           ; stop when receiving BREAK
+000DCEr 1  C9 03                cmp     #3
+000DD0r 1  F0 58                beq     LDBRK           ; stop when receiving CTRL-C
+000DD2r 1  C9 3A                cmp     #':'            ; expect ":" at beginning of line
+000DD4r 1  D0 5D                bne     LDEIC
+000DD6r 1  20 rr rr             jsr     LDBYT           ; get record byte count
+000DD9r 1  AA                   tax
+000DDAr 1  20 rr rr             jsr     LDBYT           ; get address high byte
+000DDDr 1  85 FC                sta     $FC
+000DDFr 1  20 rr rr             jsr     LDBYT           ; get address low byte
+000DE2r 1  85 FB                sta     $FB
+000DE4r 1  20 rr rr             jsr     LDBYT           ; get record type
+000DE7r 1  F0 0C                beq     LDDR            ; jump if data record (record type 0)
+000DE9r 1  C9 01                cmp     #1              ; end-of-file record (record type 1)
+000DEBr 1  D0 40                bne     LDERI           ; neither a data nor eof record => error
+000DEDr 1               
+000DEDr 1                       ;; read Intel HEX end-of-file record
+000DEDr 1  20 rr rr             jsr     LDBYT           ; get next byte (should be checksum)
+000DF0r 1  C9 FF                cmp     #$FF            ; checksum of EOF record is FF
+000DF2r 1  D0 3C                bne     LDECS           ; error if not
+000DF4r 1  60           LDEOF:  rts
+000DF5r 1               
+000DF5r 1                       ;; read Intel HEX data record
+000DF5r 1  18           LDDR:   clc                     ; prepare checksum
+000DF6r 1  8A                   txa                     ; byte count
+000DF7r 1  65 FB                adc     $FB             ; address low
+000DF9r 1  18                   clc
+000DFAr 1  65 FC                adc     $FC             ; address high
+000DFCr 1  85 FD                sta     $FD             ; store checksum
+000DFEr 1  A0 00                ldy     #0              ; offset
+000E00r 1  E8                   inx
+000E01r 1  CA           LDDR1:  dex                     ; decrement number of bytes
+000E02r 1  F0 11                beq     LDDR2           ; done if 0
+000E04r 1  20 rr rr             jsr     LDBYT           ; get next data byte
+000E07r 1  91 FB                sta     ($FB),y         ; store data byte
+000E09r 1  D1 FB                cmp     ($FB),y         ; check data byte
+000E0Br 1  D0 29                bne     LDEM            ; memory error if no match
+000E0Dr 1  18                   clc
+000E0Er 1  65 FD                adc     $FD             ; add to checksum
+000E10r 1  85 FD                sta     $FD             ; store checksum
+000E12r 1  C8                   iny
+000E13r 1  D0 EC                bne     LDDR1
+000E15r 1  20 rr rr     LDDR2:  jsr     LDBYT           ; get checksum byte
+000E18r 1  18                   clc
+000E19r 1  65 FD                adc     $FD             ; add to computed checkum
+000E1Br 1  D0 13                bne     LDECS           ; if sum is 0 then checksum is ok
+000E1Dr 1  A9 2B                lda     #'+'
+000E1Fr 1  20 rr rr             jsr     UAPUTW
+000E22r 1  E6 D3                inc     $D3
+000E24r 1  C0 00                cpy     #0              ; did we have 0 bytes in this record?
+000E26r 1  D0 93                bne     LDNXT           ; if not then expect another record
+000E28r 1  F0 CA                beq     LDEOF           ; end of file
+000E2Ar 1               
+000E2Ar 1               
+000E2Ar 1  A9 42        LDBRK:  lda     #'B'            ; received BREAK (ESC)
+000E2Cr 1  2C                   .byte   $2C
+000E2Dr 1  A9 52        LDERI:  lda     #'R'            ; unknown record identifier error
+000E2Fr 1  2C                   .byte   $2C
+000E30r 1  A9 43        LDECS:  lda     #'C'            ; checksum error
+000E32r 1  2C                   .byte   $2C
+000E33r 1  A9 49        LDEIC:  lda     #'I'            ; input character error
+000E35r 1  2C                   .byte   $2C
+000E36r 1  A9 4D        LDEM:   lda     #'M'            ; memory error
+000E38r 1  20 D2 FF             jsr     CHROUT
+000E3Br 1  4C rr rr     LDERR:  jmp     ERROR
+000E3Er 1               
+000E3Er 1               ;;; SAVE (S) - Output memory as Intel HEX format
+000E3Er 1  20 rr rr     SAVE:   jsr     GETDW           ; get start (FB/FC) and end (FD/FE) address
+000E41r 1  20 rr rr             jsr     LC351           ; print CR
+000E44r 1               
+000E44r 1                       ; Output Intel HEX records (16 bytes per record)
+000E44r 1               SAVE_LOOP:
+000E44r 1                       ; Check if we've reached end address
+000E44r 1  20 rr rr             jsr     LC466           ; check if at end
+000E47r 1  90 03                bcc     SAVE_CONT       ; continue if not at end
+000E49r 1  4C rr rr             jmp     SAVE_EOF        ; if so, output EOF record
+000E4Cr 1               
+000E4Cr 1               SAVE_CONT:
+000E4Cr 1                       ; Calculate bytes in this record (max 16, or remaining bytes)
+000E4Cr 1  38                   sec
+000E4Dr 1  A5 FD                lda     $FD
+000E4Fr 1  E5 FB                sbc     $FB
+000E51r 1  85 B4                sta     $B4             ; Low byte of remaining
+000E53r 1  A5 FE                lda     $FE
+000E55r 1  E5 FC                sbc     $FC             ; High byte of remaining
+000E57r 1  D0 0B                bne     SAVE_16         ; More than 256 bytes left
+000E59r 1  A5 B4                lda     $B4
+000E5Br 1  D0 03                bne     SAVE_CHK        ; Some bytes left
+000E5Dr 1  4C rr rr             jmp     SAVE_EOF        ; Zero bytes left
+000E60r 1               
+000E60r 1               SAVE_CHK:
+000E60r 1  C9 10                cmp     #16
+000E62r 1  90 02                bcc     SAVE_COUNT      ; Less than 16 bytes
+000E64r 1               
+000E64r 1               SAVE_16:
+000E64r 1  A9 10                lda     #16             ; Output 16 bytes
+000E66r 1               
+000E66r 1               SAVE_COUNT:
+000E66r 1  85 B4                sta     $B4             ; Store byte count
+000E68r 1               
+000E68r 1                       ; Output record start marker
+000E68r 1  A9 3A                lda     #':'
+000E6Ar 1  20 D2 FF             jsr     CHROUT
+000E6Dr 1               
+000E6Dr 1                       ; Output byte count as HEX
+000E6Dr 1  A5 B4                lda     $B4
+000E6Fr 1  20 rr rr             jsr     LC32A
+000E72r 1               
+000E72r 1                       ; Initialize checksum with byte count
+000E72r 1  85 B5                sta     $B5             ; Checksum
+000E74r 1               
+000E74r 1                       ; Output address (FB/FC)
+000E74r 1  A5 FC                lda     $FC             ; High byte
+000E76r 1  20 rr rr             jsr     LC32A
+000E79r 1  18                   clc
+000E7Ar 1  65 B5                adc     $B5
+000E7Cr 1  85 B5                sta     $B5             ; Add to checksum
+000E7Er 1               
+000E7Er 1  A5 FB                lda     $FB             ; Low byte
+000E80r 1  20 rr rr             jsr     LC32A
+000E83r 1  18                   clc
+000E84r 1  65 B5                adc     $B5
+000E86r 1  85 B5                sta     $B5             ; Add to checksum
+000E88r 1               
+000E88r 1                       ; Output record type (00 = data)
+000E88r 1  A9 00                lda     #$00
+000E8Ar 1  20 rr rr             jsr     LC32A
+000E8Dr 1                       ; checksum unchanged (adding 0)
+000E8Dr 1               
+000E8Dr 1                       ; Output data bytes
+000E8Dr 1  A0 00                ldy     #$00
+000E8Fr 1               SAVE_DATA:
+000E8Fr 1  B1 FB                lda     ($FB),y
+000E91r 1  20 rr rr             jsr     LC32A           ; Output byte as HEX
+000E94r 1  18                   clc
+000E95r 1  65 B5                adc     $B5
+000E97r 1  85 B5                sta     $B5             ; Add to checksum
+000E99r 1  C8                   iny
+000E9Ar 1  C4 B4                cpy     $B4             ; Done with all bytes?
+000E9Cr 1  D0 F1                bne     SAVE_DATA
+000E9Er 1               
+000E9Er 1                       ; Output checksum (two's complement)
+000E9Er 1  A5 B5                lda     $B5
+000EA0r 1  49 FF                eor     #$FF
+000EA2r 1  18                   clc
+000EA3r 1  69 01                adc     #$01
+000EA5r 1  20 rr rr             jsr     LC32A
+000EA8r 1               
+000EA8r 1                       ; Print CR/LF
+000EA8r 1  A9 0D                lda     #$0D
+000EAAr 1  20 D2 FF             jsr     CHROUT
+000EADr 1  A9 0A                lda     #$0A
+000EAFr 1  20 D2 FF             jsr     CHROUT
+000EB2r 1               
+000EB2r 1                       ; Advance address by byte count
+000EB2r 1  18                   clc
+000EB3r 1  A5 FB                lda     $FB
+000EB5r 1  65 B4                adc     $B4
+000EB7r 1  85 FB                sta     $FB
+000EB9r 1  A5 FC                lda     $FC
+000EBBr 1  69 00                adc     #$00
+000EBDr 1  85 FC                sta     $FC
+000EBFr 1               
+000EBFr 1                       ; Continue with next record
+000EBFr 1  4C rr rr             jmp     SAVE_LOOP
+000EC2r 1               
+000EC2r 1               SAVE_EOF:
+000EC2r 1                       ; Output EOF record (:00000001FF)
+000EC2r 1  A9 3A                lda     #':'
+000EC4r 1  20 D2 FF             jsr     CHROUT
+000EC7r 1  A9 00                lda     #$00
+000EC9r 1  20 rr rr             jsr     LC32A           ; Byte count = 00
+000ECCr 1  20 rr rr             jsr     LC32A           ; Address high = 00
+000ECFr 1  20 rr rr             jsr     LC32A           ; Address low = 00
+000ED2r 1  A9 01                lda     #$01
+000ED4r 1  20 rr rr             jsr     LC32A           ; Record type = 01 (EOF)
+000ED7r 1  A9 FF                lda     #$FF
+000ED9r 1  20 rr rr             jsr     LC32A           ; Checksum = FF
+000EDCr 1  A9 0D                lda     #$0D
+000EDEr 1  20 D2 FF             jsr     CHROUT
+000EE1r 1  A9 0A                lda     #$0A
+000EE3r 1  20 D2 FF             jsr     CHROUT
+000EE6r 1  60                   rts
+000EE7r 1               
+000EE7r 1                       ;; get HEX byte from UART
+000EE7r 1  20 rr rr     LDBYT:  jsr     LDNIB           ; get high nibble
+000EEAr 1  0A                   asl
+000EEBr 1  0A                   asl
+000EECr 1  0A                   asl
+000EEDr 1  0A                   asl
+000EEEr 1  85 B4                sta     $B4
+000EF0r 1  20 rr rr             jsr     LDNIB           ; get low libble
+000EF3r 1  05 B4                ora     $B4             ; combine
+000EF5r 1  60                   rts
+000EF6r 1                       ;; get HEX character from UART, convert to 0-15
+000EF6r 1  20 rr rr     LDNIB:  jsr     LAB_WAIT_Rx     ; get character from UART
+000EF9r 1  20 rr rr             jsr     UCASE           ; convert to uppercase
+000EFCr 1  C9 30                cmp     #'0'
+000EFEr 1  B0 03                bcs     :+
+000F00r 1  4C rr rr             jmp     LDEIC
+000F03r 1  C9 47        :       cmp     #'F'+1
+000F05r 1  90 03                bcc     :+
+000F07r 1  4C rr rr             jmp     LDEIC
+000F0Ar 1  C9 3A        :       cmp     #'9'+1
+000F0Cr 1  90 09                bcc     LDBYT2
+000F0Er 1  C9 41                cmp     #'A'
+000F10r 1  B0 03                bcs     :+
+000F12r 1  4C rr rr             jmp     LDEIC
+000F15r 1  69 08        :       adc     #$08
+000F17r 1  29 0F        LDBYT2: and     #$0F
+000F19r 1  60                   rts
+000F1Ar 1               
+000F1Ar 1                       ;; MEMDUMP (M)
+000F1Ar 1  20 rr rr     MEMDUMP:jsr     GETCHR
+000F1Dr 1  F0 63                beq     MDERR           ; error if CR
+000F1Fr 1  C9 54                cmp     #'T'            ; is it 'T'
+000F21r 1  D0 03                bne     MD1             ; go to memory dump
+000F23r 1  4C rr rr             jmp     MEMTST
+000F26r 1  C9 53        MD1:    cmp     #'S'
+000F28r 1  D0 03                bne     MD2
+000F2Ar 1  4C rr rr             jmp     MEMSIZ
+000F2Dr 1  C9 20        MD2:    cmp     #' '
+000F2Fr 1  D0 51                bne     MDERR
+000F31r 1  20 rr rr     MD3:    jsr     GETSE           ; get start (FB/FC) and end address (FD/FE)
+000F34r 1  A2 3A        LC3FC:  ldx     #$3A            ; ':'
+000F36r 1  20 rr rr             jsr     LC340           ; print NEWLINE followed by ':'
+000F39r 1  20 rr rr             jsr     LC323           ; print address in FB/FC
+000F3Cr 1  A0 3F                ldy     #80-17
+000F3Er 1  A2 00                ldx     #0
+000F40r 1  20 rr rr     LC408:  jsr     LC34C           ; output space
+000F43r 1  C0 47                cpy     #80-9
+000F45r 1  D0 04                bne     LC409
+000F47r 1  20 rr rr             jsr     LC34C           ; output space
+000F4Ar 1  C8                   iny
+000F4Br 1  A1 FB        LC409:  lda     ($FB,x)
+000F4Dr 1  20 rr rr             jsr     LC32A           ; output byte as HEX
+000F50r 1  A1 FB                lda     ($FB,x)
+000F52r 1  20 rr rr             jsr     LC439           ; write ASCII char of byte directly to screen
+000F55r 1  D0 E9                bne     LC408           ; repeat until end-of-line
+000F57r 1  20 rr rr             jsr     PREOL           ; print to end of line
+000F5Ar 1  20 rr rr             jsr     LC45D           ; check for PAUSE/STOP or end condition
+000F5Dr 1  90 D5                bcc     LC3FC           ; repeat until end
+000F5Fr 1  60                   rts
+000F60r 1               
+000F60r 1                       ;; Colon (: - edit memory dump)
+000F60r 1  20 rr rr     COLON:  jsr     GETWRD          ; get start addressz
+000F63r 1  A0 3F                ldy     #80-17
+000F65r 1  A2 00                ldx     #$00
+000F67r 1  C0 47        LC424:  cpy     #80-9
+000F69r 1  D0 01                bne     LC434
+000F6Br 1  C8                   iny
+000F6Cr 1  20 CF FF     LC434:  jsr     CHRIN           ; get next character
+000F6Fr 1  C9 20                cmp     #$20            ; was it space?
+000F71r 1  F0 F4                beq     LC424           ; skip space
+000F73r 1  C9 0D                cmp     #$0D            ; was it CR?
+000F75r 1  F0 18                beq     COLOD           ; done if so
+000F77r 1  C6 D3                dec     $D3             ; go back one input char
+000F79r 1  20 rr rr             jsr     GETBYT          ; get hex byte
+000F7Cr 1  81 FB                sta     ($FB,x)         ; store byte
+000F7Er 1  C1 FB                cmp     ($FB,x)         ; compare (make sure it's not ROM)
+000F80r 1  F0 03                beq     LC433           ; if match then skip
+000F82r 1  4C rr rr     MDERR:  jmp     ERROR           ; print error
+000F85r 1  20 rr rr     LC433:  jsr     LC439           ; write ASCII to screen
+000F88r 1  D0 DD                bne     LC424           ; repeat until end
+000F8Ar 1  A9 3F                lda     #80-17
+000F8Cr 1  20 rr rr             jsr     PRLINE
+000F8Fr 1  60           COLOD:  rts
+000F90r 1               
+000F90r 1                       ;; put character into screen buffer at column Y
+000F90r 1                       ;; (make sure it is printable first)
+000F90r 1  C9 20        LC439:  cmp     #$20            ; character code < 32 (space)
+000F92r 1  90 06                bcc     LC449           ; if so, print "."
+000F94r 1  C9 7F                cmp     #$7F            ; character code >= 127
+000F96r 1  B0 02                bcs     LC449           ; if so, print "."
+000F98r 1  90 02                bcc     LC44F           ; print character
+000F9Ar 1  A9 2E        LC449:  lda     #$2E
+000F9Cr 1  91 D1        LC44F:  sta     ($D1),y
+000F9Er 1  AD 86 02             lda     $0286
+000FA1r 1  91 F3                sta     ($F3),y
+000FA3r 1  20 rr rr     LC456:  jsr     LC367
+000FA6r 1  C8                   iny
+000FA7r 1  C0 50                cpy     #80
+000FA9r 1  60                   rts
+000FAAr 1               
+000FAAr 1                       ;; check stop/pause condition, return with carry set
+000FAAr 1                       ;; if end address reached
+000FAAr 1  20 rr rr     LC45D:  jsr     LC472           ; end-of-line wait handling
+000FADr 1  4C rr rr             jmp     LC466           ; check for end address and return
+000FB0r 1               
+000FB0r 1                       ;; increment address in $FB/$FC and check whether end address
+000FB0r 1                       ;; ($FD/$FE) has been reached, if not, C is clear on return
+000FB0r 1  20 rr rr     LC463:  jsr     LC367           ; increment address in $FB/$FC
+000FB3r 1               
+000FB3r 1                       ;; check whether end address has been reached, C is clear if not
+000FB3r 1  A5 FB        LC466:  lda     $FB
+000FB5r 1  C5 FD                cmp     $FD
+000FB7r 1  A5 FC                lda     $FC
+000FB9r 1  E5 FE                sbc     $FE
+000FBBr 1  60                   rts
+000FBCr 1               
+000FBCr 1                       ;; end-of-line wait handling:
+000FBCr 1                       ;; - stop if STOP key pressed
+000FBCr 1                       ;; - wait if any key pressed
+000FBCr 1                       ;; - if SPACE pressed, immediately stop again after next line
+000FBCr 1  20 rr rr     LC472:  jsr     LC486           ; check for STOP or keypress
+000FBFr 1  F0 0E                beq     LC485           ; no key => done
+000FC1r 1  20 rr rr     LC477:  jsr     LC486           ; check for STOP or keypress
+000FC4r 1  F0 FB                beq     LC477           ; no key => wait
+000FC6r 1  C9 20                cmp     #$20            ; is SPACE?
+000FC8r 1  D0 05                bne     LC485           ; no => done
+000FCAr 1  8D 77 02             sta     $0277           ; put SPACE in keyboard buffer
+000FCDr 1  E6 C6                inc     $C6             ; (i.e. advance just one line)
+000FCFr 1  60           LC485:  rts
+000FD0r 1               
+000FD0r 1                       ;; check for STOP or other keypress
+000FD0r 1  20 E4 FF     LC486:  jsr     GETIN           ; get input character
+000FD3r 1  48                   pha                     ; save char
+000FD4r 1  20 E1 FF             jsr     STOP            ; check stop key
+000FD7r 1  F0 02                beq     LC491           ; jump if pressed
+000FD9r 1  68                   pla                     ; restore char to A
+000FDAr 1  60           LC490:  rts
+000FDBr 1  4C rr rr     LC491:  jmp     LC2D6           ; back to main loop (resets stack)
+000FDEr 1               
+000FDEr 1                       ;;
+000FDEr 1  A0 00        LC4CB:  ldy     #$00
+000FE0r 1  B1 FB                lda     ($FB),y         ; get opcode at $FB/FC
+000FE2r 1  24 AA                bit     $AA
+000FE4r 1  30 02                bmi     LC4D5
+000FE6r 1  50 0C                bvc     LC4E1
+000FE8r 1  A2 1F        LC4D5:  ldx     #$1F
+000FEAr 1  DD rr rr     LC4D7:  cmp     LC13D-1,x
+000FEDr 1  F0 2F                beq     LC50B
+000FEFr 1  CA                   dex
+000FF0r 1  E0 15                cpx     #$15
+000FF2r 1  D0 F6                bne     LC4D7
+000FF4r 1  A2 04        LC4E1:  ldx     #$04
+000FF6r 1  DD rr rr     LC4E3:  cmp     LC14A-1,x
+000FF9r 1  F0 21                beq     LC509
+000FFBr 1  DD rr rr             cmp     LC14E-1,x
+000FFEr 1  F0 1E                beq     LC50B
+001000r 1  CA                   dex
+001001r 1  D0 F3                bne     LC4E3
+001003r 1  A2 38                ldx     #$38
+001005r 1  DD rr rr     LC4F2:  cmp     OPC-1,x
+001008r 1  F0 14                beq     LC50B
+00100Ar 1  CA                   dex
+00100Br 1  E0 16                cpx     #$16
+00100Dr 1  D0 F6                bne     LC4F2
+00100Fr 1  B1 FB        LC4FC:  lda     ($FB),y
+001011r 1  3D rr rr             and     LC0FC-1,x
+001014r 1  5D rr rr             eor     OPC-1,x
+001017r 1  F0 05                beq     LC50B
+001019r 1  CA                   dex
+00101Ar 1  D0 F3                bne     LC4FC
+00101Cr 1  A2 00        LC509:  ldx     #$00
+00101Er 1  86 AD        LC50B:  stx     $AD
+001020r 1  8A                   txa
+001021r 1  F0 0F                beq     LC51F
+001023r 1  A2 11                ldx     #$11
+001025r 1  B1 FB        LC512:  lda     ($FB),y
+001027r 1  3D rr rr             and     LC0B6-1,x
+00102Ar 1  5D rr rr             eor     LC0C7-1,x
+00102Dr 1  F0 03                beq     LC51F
+00102Fr 1  CA                   dex
+001030r 1  D0 F3                bne     LC512
+001032r 1  BD rr rr     LC51F:  lda     LC0EB-1,x
+001035r 1  85 AB                sta     $AB
+001037r 1  BD rr rr             lda     LC0D9-1,x
+00103Ar 1  85 B6                sta     $B6
+00103Cr 1  A6 AD                ldx     $AD
+00103Er 1  60                   rts
+00103Fr 1               
+00103Fr 1  A0 01        LC52C:  ldy     #$01
+001041r 1  B1 FB                lda     ($FB),y
+001043r 1  AA                   tax
+001044r 1  C8                   iny
+001045r 1  B1 FB                lda     ($FB),y
+001047r 1  A0 10                ldy     #$10
+001049r 1  C4 AB                cpy     $AB
+00104Br 1  D0 07                bne     LC541
+00104Dr 1  20 rr rr             jsr     LC54A
+001050r 1  A0 03                ldy     #$03
+001052r 1  D0 02                bne     LC543
+001054r 1  A4 B6        LC541:  ldy     $B6
+001056r 1  86 AE        LC543:  stx     $AE
+001058r 1  EA                   nop
+001059r 1  85 AF                sta     $AF
+00105Br 1  EA                   nop
+00105Cr 1  60                   rts
+00105Dr 1               
+00105Dr 1  A0 01        LC54A:  ldy     #$01
+00105Fr 1  B1 FB                lda     ($FB),y
+001061r 1  10 01                bpl     LC551
+001063r 1  88                   dey
+001064r 1  38           LC551:  sec
+001065r 1  65 FB                adc     $FB
+001067r 1  AA                   tax
+001068r 1  E8                   inx
+001069r 1  F0 01                beq     LC559
+00106Br 1  88                   dey
+00106Cr 1  98           LC559:  tya
+00106Dr 1  65 FC                adc     $FC
+00106Fr 1  60           LC55C:  rts
+001070r 1               
+001070r 1               
+001070r 1               ; DISASS (D)
+001070r 1  A2 00        DISASS: ldx     #$00
+001072r 1  86 AA                stx     $AA
+001074r 1  20 rr rr             jsr     GETSE           ; get start (FB/FC) and end address (FD/FE)
+001077r 1  20 rr rr     LC564:  jsr     LC58C
+00107Ar 1  A5 AD                lda     $AD
+00107Cr 1  C9 16                cmp     #$16
+00107Er 1  F0 09                beq     LC576
+001080r 1  C9 30                cmp     #$30
+001082r 1  F0 05                beq     LC576
+001084r 1  C9 21                cmp     #$21
+001086r 1  D0 0E                bne     LC586
+001088r 1  EA                   nop
+001089r 1  20 rr rr     LC576:  jsr     LC351
+00108Cr 1  A2 23                ldx     #$23
+00108Er 1  A9 2D                lda     #$2D
+001090r 1  20 D2 FF     LC580:  jsr     CHROUT
+001093r 1  CA                   dex
+001094r 1  D0 FA                bne     LC580
+001096r 1  20 rr rr     LC586:  jsr     LC45D
+001099r 1  90 DC                bcc     LC564
+00109Br 1  60                   rts
+00109Cr 1               
+00109Cr 1  A2 2C        LC58C:  ldx     #$2C            ; output NEWLINE followed by ","
+00109Er 1  20 rr rr             jsr     LC340
+0010A1r 1  20 rr rr             jsr     LC323           ; output FB/FC (address)
+0010A4r 1  20 rr rr             jsr     LC34C           ; output SPACE
+0010A7r 1  20 rr rr     LC597:  jsr     LC675           ; erase to end of line
+0010AAr 1  20 rr rr             jsr     LC4CB
+0010ADr 1  20 rr rr             jsr     LC34C           ; output SPACE
+0010B0r 1  B1 FB        LC5A0:  lda     ($FB),y         ; get data byte
+0010B2r 1  20 rr rr             jsr     LC32A           ; output byte in A
+0010B5r 1  20 rr rr             jsr     LC34C           ; output SPACE
+0010B8r 1  C8                   iny
+0010B9r 1  C4 B6                cpy     $B6
+0010BBr 1  D0 F3                bne     LC5A0
+0010BDr 1  A9 03                lda     #$03
+0010BFr 1  38                   sec
+0010C0r 1  E5 B6                sbc     $B6
+0010C2r 1  AA                   tax
+0010C3r 1  F0 09                beq     LC5BE
+0010C5r 1  20 rr rr     LC5B5:  jsr     LC349
+0010C8r 1  20 rr rr             jsr     LC34C
+0010CBr 1  CA                   dex
+0010CCr 1  D0 F7                bne     LC5B5
+0010CEr 1  A9 20        LC5BE:  lda     #$20
+0010D0r 1  20 D2 FF             jsr     CHROUT
+0010D3r 1  A0 00                ldy     #$00
+0010D5r 1  A6 AD                ldx     $AD
+0010D7r 1  D0 11        LC5C7:  bne     LC5DA
+0010D9r 1  A2 03                ldx     #$03
+0010DBr 1  A9 2A        LC5CB:  lda     #$2A
+0010DDr 1  20 D2 FF             jsr     CHROUT
+0010E0r 1  CA                   dex
+0010E1r 1  D0 F8                bne     LC5CB
+0010E3r 1  24 AA                bit     $AA
+0010E5r 1  30 88                bmi     LC55C
+0010E7r 1  4C rr rr             jmp     LC66A
+0010EAr 1  24 AA        LC5DA:  bit     $AA
+0010ECr 1  50 29                bvc     LC607
+0010EEr 1  A9 08                lda     #$08
+0010F0r 1  24 AB                bit     $AB
+0010F2r 1  F0 23                beq     LC607
+0010F4r 1  B1 FB                lda     ($FB),y
+0010F6r 1  29 FC                and     #$FC
+0010F8r 1  85 AD                sta     $AD
+0010FAr 1  C8                   iny
+0010FBr 1  B1 FB                lda     ($FB),y
+0010FDr 1  0A                   asl
+0010FEr 1  A8                   tay
+0010FFr 1  B9 3C 03             lda     $033C,y
+001102r 1  85 AE                sta     $AE
+001104r 1  EA                   nop
+001105r 1  C8                   iny
+001106r 1  B9 3C 03             lda     $033C,y
+001109r 1  85 AF                sta     $AF
+00110Br 1  EA                   nop
+00110Cr 1  20 rr rr             jsr     LC6BE
+00110Fr 1  A4 B6                ldy     $B6
+001111r 1  20 rr rr             jsr     LC693
+001114r 1  20 rr rr             jsr     LC4CB
+001117r 1  BD rr rr     LC607:  lda     OPMN1-1,x
+00111Ar 1  20 D2 FF             jsr     CHROUT
+00111Dr 1  BD rr rr             lda     OPMN2-1,x
+001120r 1  20 D2 FF             jsr     CHROUT
+001123r 1  BD rr rr             lda     OPMN3-1,x
+001126r 1  20 D2 FF             jsr     CHROUT
+001129r 1  A9 20                lda     #$20
+00112Br 1  24 AB                bit     $AB
+00112Dr 1  F0 03                beq     LC622
+00112Fr 1  20 rr rr             jsr     LC349
+001132r 1  A2 20        LC622:  ldx     #$20
+001134r 1  A9 04                lda     #$04
+001136r 1  24 AB                bit     $AB
+001138r 1  F0 02                beq     LC62C
+00113Ar 1  A2 28                ldx     #$28
+00113Cr 1  8A           LC62C:  txa
+00113Dr 1  20 D2 FF             jsr     CHROUT
+001140r 1  24 AB                bit     $AB
+001142r 1  50 05                bvc     LC639
+001144r 1  A9 23                lda     #$23
+001146r 1  20 D2 FF             jsr     CHROUT
+001149r 1  20 rr rr     LC639:  jsr     LC52C
+00114Cr 1  88                   dey
+00114Dr 1  F0 16                beq     LC655
+00114Fr 1  A9 08                lda     #$08
+001151r 1  24 AB                bit     $AB
+001153r 1  F0 07                beq     LC64C
+001155r 1  A9 4D                lda     #$4D
+001157r 1  20 D2 FF             jsr     CHROUT
+00115Ar 1  A0 01                ldy     #$01
+00115Cr 1  B9 AD 00     LC64C:  lda     $AD,y
+00115Fr 1  20 rr rr             jsr     LC32A
+001162r 1  88                   dey
+001163r 1  D0 F7                bne     LC64C
+001165r 1  A0 03        LC655:  ldy     #$03
+001167r 1  B9 rr rr     LC657:  lda     LC0AD-1,y
+00116Ar 1  24 AB                bit     $AB
+00116Cr 1  F0 09                beq     LC667
+00116Er 1  B9 rr rr             lda     LC0B0-1,y
+001171r 1  BE rr rr             ldx     LC0B3-1,y
+001174r 1  20 rr rr             jsr     LC342
+001177r 1  88           LC667:  dey
+001178r 1  D0 ED                bne     LC657
+00117Ar 1  A5 B6        LC66A:  lda     $B6
+00117Cr 1  20 rr rr     LC66C:  jsr     LC367
+00117Fr 1  38                   sec
+001180r 1  E9 01                sbc     #$01
+001182r 1  D0 F8                bne     LC66C
+001184r 1  60                   rts
+001185r 1               
+001185r 1                       ;; erase screen buffer to end of line
+001185r 1  A4 D3        LC675:  ldy     $D3
+001187r 1  A9 20                lda     #' '
+001189r 1  91 D1        LC679:  sta     ($D1),y
+00118Br 1  C8                   iny
+00118Cr 1  C0 28                cpy     #40
+00118Er 1  90 F9                bcc     LC679
+001190r 1  60                   rts
+001191r 1               
+001191r 1  E4 AB        LC681:  cpx     $AB
+001193r 1  D0 04                bne     LC689
+001195r 1  05 AD                ora     $AD
+001197r 1  85 AD                sta     $AD
+001199r 1  60           LC689:  rts
+00119Ar 1               
+00119Ar 1                       ;; copy $AD through $AD+y to ($FB)
+00119Ar 1  B9 AD 00     LC68A:  lda     $AD,y
+00119Dr 1  91 FB                sta     ($FB),y
+00119Fr 1  D1 FB                cmp     ($FB),y
+0011A1r 1  D0 04                bne     LC697
+0011A3r 1  88           LC693:  dey
+0011A4r 1  10 F4                bpl     LC68A
+0011A6r 1  60                   rts
+0011A7r 1               
+0011A7r 1  68           LC697:  pla
+0011A8r 1  68                   pla
+0011A9r 1  60                   rts
+0011AAr 1               
+0011AAr 1  D0 1F        LC69A:  bne     LC6B8
+0011ACr 1  8A                   txa
+0011ADr 1  05 AB                ora     $AB
+0011AFr 1  85 AB                sta     $AB
+0011B1r 1               
+0011B1r 1                       ;; get first character that is not " $(," (max 4)
+0011B1r 1  A9 04        LC6A1:  lda     #$04
+0011B3r 1  85 B5                sta     $B5
+0011B5r 1  20 CF FF     LC6A5:  jsr     CHRIN           ; get character
+0011B8r 1  C9 20                cmp     #$20            ; is it space?
+0011BAr 1  F0 10                beq     LC6B9           ;
+0011BCr 1  C9 24                cmp     #$24            ; is it "$"?
+0011BEr 1  F0 0C                beq     LC6B9
+0011C0r 1  C9 28                cmp     #$28            ; is it "("?
+0011C2r 1  F0 08                beq     LC6B9
+0011C4r 1  C9 2C                cmp     #$2C            ; is it ","?
+0011C6r 1  F0 04                beq     LC6B9
+0011C8r 1  20 rr rr             jsr     UCASE           ; convert to uppercase
+0011CBr 1  60           LC6B8:  rts
+0011CCr 1                       ;; character was either " ", "$", "(" or ","
+0011CCr 1  C6 B5        LC6B9:  dec     $B5
+0011CEr 1  D0 E5                bne     LC6A5           ; get next character
+0011D0r 1  60                   rts
+0011D1r 1               
+0011D1r 1  E0 18        LC6BE:  cpx     #$18
+0011D3r 1  30 0E                bmi     LC6D0
+0011D5r 1  A5 AE                lda     $AE
+0011D7r 1  EA                   nop
+0011D8r 1  38                   sec
+0011D9r 1  E9 02                sbc     #$02
+0011DBr 1  38                   sec
+0011DCr 1  E5 FB                sbc     $FB
+0011DEr 1  85 AE                sta     $AE
+0011E0r 1  EA                   nop
+0011E1r 1  A0 40                ldy     #$40
+0011E3r 1  60           LC6D0:  rts
+0011E4r 1               
+0011E4r 1               ; Assembler (A)
+0011E4r 1               ASSEMBLER:
+0011E4r 1  20 rr rr             jsr     GETWRD          ; get start address
+0011E7r 1  85 FD                sta     $FD
+0011E9r 1  A5 FC                lda     $FC
+0011EBr 1  85 FE                sta     $FE
+0011EDr 1  20 rr rr     LC6DA:  jsr     LC351           ; print CR
+0011F0r 1  20 rr rr     LC6DD:  jsr     LC6E4           ; get and assemble line
+0011F3r 1  30 FB                bmi     LC6DD
+0011F5r 1  10 F6                bpl     LC6DA
+0011F7r 1               
+0011F7r 1  A9 00        LC6E4:  lda     #$00
+0011F9r 1  85 D3                sta     $D3
+0011FBr 1  20 rr rr             jsr     LC34C           ; output ' '
+0011FEr 1  20 rr rr             jsr     LC323           ; output address
+001201r 1  20 rr rr             jsr     LC34C           ; output ' '
+001204r 1  20 CF FF             jsr     CHRIN           ; get character
+001207r 1  A9 01                lda     #$01            ; set input start column within line
+001209r 1  85 D3                sta     $D3
+00120Br 1  A2 80                ldx     #$80
+00120Dr 1  D0 05                bne     LC701
+00120Fr 1                       ;; entry point from "," command (assemble single line)
+00120Fr 1  A2 80        COMMA:  ldx     #$80            ; set "comma" flag
+001211r 1  8E B1 02             stx     $02B1
+001214r 1  86 AA        LC701:  stx     $AA
+001216r 1  20 rr rr             jsr     GETWRD          ; get word (address) from command line
+001219r 1  A9 25                lda     #$25            ; set last input char (37)
+00121Br 1  8D C8 00             sta     LASTCOL
+00121Er 1  2C B1 02             bit     $02B1           ; skip the following if "comma" flag NOT set
+001221r 1  10 08                bpl     LC717
+001223r 1  A2 0A                ldx     #$0A            ; skip 10 characters (for "," command)
+001225r 1  20 CF FF     LC711:  jsr     CHRIN
+001228r 1  CA                   dex
+001229r 1  D0 FA                bne     LC711
+00122Br 1  A9 00        LC717:  lda     #$00
+00122Dr 1  8D B1 02             sta     $02B1
+001230r 1  20 rr rr             jsr     LC6A1           ; get a character (skip " $(,")
+001233r 1  C9 46                cmp     #$46            ; is it "f"?
+001235r 1  D0 16                bne     LC739           ; jump if not
+001237r 1                       ;; disassemble the whole input and exit
+001237r 1  46 AA                lsr     $AA
+001239r 1  68                   pla
+00123Ar 1  68                   pla
+00123Br 1  A2 02                ldx     #$02
+00123Dr 1  B5 FA        LC729:  lda     $FA,x           ; swap $FB/$FC and $FD/$FE
+00123Fr 1  48                   pha
+001240r 1  B5 FC                lda     $FC,x
+001242r 1  95 FA                sta     $FA,x
+001244r 1  68                   pla
+001245r 1  95 FC                sta     $FC,x
+001247r 1  CA                   dex
+001248r 1  D0 F3                bne     LC729
+00124Ar 1  4C rr rr             jmp     LC564           ; disassemble
+00124Dr 1  C9 2E        LC739:  cmp     #$2E            ; was character "."?
+00124Fr 1  D0 11                bne     LC74E           ; jump if not
+001251r 1  20 rr rr             jsr     GETBYT
+001254r 1  A0 00                ldy     #$00
+001256r 1  91 FB                sta     ($FB),y         ; store opcode
+001258r 1  D1 FB                cmp     ($FB),y         ; compare (in case of ROM)
+00125Ar 1  D0 04                bne     LC74C           ; if different then error
+00125Cr 1  20 rr rr             jsr     LC367           ; increment FB/FC pointer
+00125Fr 1  C8                   iny
+001260r 1  88           LC74C:  dey
+001261r 1  60                   rts
+001262r 1               
+001262r 1  A2 FD        LC74E:  ldx     #$FD
+001264r 1  C9 4D                cmp     #$4D            ; was character "M"?
+001266r 1  D0 19                bne     LC76D           ; jump if not
+001268r 1  20 rr rr             jsr     GETBYT
+00126Br 1  A0 00                ldy     #$00
+00126Dr 1  C9 3F                cmp     #$3F
+00126Fr 1  B0 EF                bcs     LC74C
+001271r 1  0A                   asl
+001272r 1  A8                   tay
+001273r 1  A5 FB                lda     $FB
+001275r 1  99 3C 03             sta     $033C,y
+001278r 1  A5 FC                lda     $FC
+00127Ar 1  C8                   iny
+00127Br 1  99 3C 03             sta     $033C,y
+00127Er 1                       ;; read 3 opcode characters and store in $a6-$a8
+00127Er 1  20 rr rr     LC76A:  jsr     LC6A1           ; get a character
+001281r 1  95 A9        LC76D:  sta     $A9,x           ; store character
+001283r 1  E0 FD                cpx     #$FD
+001285r 1  D0 04                bne     LC777
+001287r 1  A9 07                lda     #$07
+001289r 1  85 B7                sta     $B7
+00128Br 1  E8           LC777:  inx
+00128Cr 1  D0 F0                bne     LC76A           ; get more characters (total 3)
+00128Er 1  A2 38                ldx     #$38
+001290r 1                       ;; find mnemonic in table
+001290r 1  A5 A6        LC77C:  lda     $A6             ; get first opcode char
+001292r 1  DD rr rr             cmp     OPMN1-1,x        ; find it in table
+001295r 1  F0 05                beq     LC788           ; jump if found
+001297r 1  CA           LC783:  dex
+001298r 1  D0 F6                bne     LC77C
+00129Ar 1  CA                   dex
+00129Br 1  60                   rts                     ; not found => error exit
+00129Cr 1  A5 A7        LC788:  lda     $A7             ; get second opcode char
+00129Er 1  DD rr rr             cmp     OPMN2-1,x       ; compare with expected
+0012A1r 1  D0 F4                bne     LC783           ; repeat if no match
+0012A3r 1  A5 A8                lda     $A8             ; get third opcode char
+0012A5r 1  DD rr rr             cmp     OPMN3-1,x       ; compare with expected
+0012A8r 1  D0 ED                bne     LC783           ; repeat if no match
+0012AAr 1                       ;; found mnemonic
+0012AAr 1  BD rr rr             lda     OPC-1,x         ; get opcode
+0012ADr 1  85 AD                sta     $AD             ; store opcode
+0012AFr 1  20 rr rr             jsr     LC6A1           ; get another character
+0012B2r 1  A0 00                ldy     #$00
+0012B4r 1  E0 20                cpx     #$20
+0012B6r 1  10 09                bpl     LC7AD
+0012B8r 1  C9 20                cmp     #$20
+0012BAr 1  D0 08                bne     LC7B0
+0012BCr 1  BD rr rr             lda     LC14E-1,x
+0012BFr 1  85 AD                sta     $AD
+0012C1r 1  4C rr rr     LC7AD:  jmp     LC831
+0012C4r 1  A0 08        LC7B0:  ldy     #$08
+0012C6r 1  C9 4D                cmp     #$4D
+0012C8r 1  F0 20                beq     LC7D6
+0012CAr 1  A0 40                ldy     #$40
+0012CCr 1  C9 23                cmp     #$23
+0012CEr 1  F0 1A                beq     LC7D6
+0012D0r 1  20 rr rr             jsr     LC29D
+0012D3r 1  85 AE                sta     $AE
+0012D5r 1  EA                   nop
+0012D6r 1  85 AF                sta     $AF
+0012D8r 1  EA                   nop
+0012D9r 1  20 rr rr             jsr     LC6A1
+0012DCr 1  A0 20                ldy     #$20
+0012DEr 1  C9 30                cmp     #$30
+0012E0r 1  90 1B                bcc     LC7E9
+0012E2r 1  C9 47                cmp     #$47
+0012E4r 1  B0 17                bcs     LC7E9
+0012E6r 1  A0 80                ldy     #$80
+0012E8r 1  C6 D3                dec     $D3
+0012EAr 1  20 rr rr     LC7D6:  jsr     LC6A1
+0012EDr 1  20 rr rr             jsr     LC29D
+0012F0r 1  85 AE                sta     $AE
+0012F2r 1  EA                   nop
+0012F3r 1  20 rr rr             jsr     LC6A1
+0012F6r 1  C0 08                cpy     #$08
+0012F8r 1  F0 03                beq     LC7E9
+0012FAr 1  20 rr rr             jsr     LC6BE
+0012FDr 1  84 AB        LC7E9:  sty     $AB
+0012FFr 1  A2 01                ldx     #$01
+001301r 1  C9 58                cmp     #$58
+001303r 1  20 rr rr             jsr     LC69A
+001306r 1  A2 04                ldx     #$04
+001308r 1  C9 29                cmp     #$29
+00130Ar 1  20 rr rr             jsr     LC69A
+00130Dr 1  A2 02                ldx     #$02
+00130Fr 1  C9 59                cmp     #$59
+001311r 1  20 rr rr             jsr     LC69A
+001314r 1  A5 AD                lda     $AD
+001316r 1  29 0D                and     #$0D
+001318r 1  F0 0A                beq     LC810
+00131Ar 1  A2 40                ldx     #$40
+00131Cr 1  A9 08                lda     #$08
+00131Er 1  20 rr rr             jsr     LC681
+001321r 1  A9 18                lda     #$18
+001323r 1  2C                   .byte  $2C              ; skip next (2-byte) opcode
+001324r 1  A9 1C        LC810:  lda     #$1C
+001326r 1  A2 82                ldx     #$82
+001328r 1  20 rr rr             jsr     LC681
+00132Br 1  A0 08                ldy     #$08
+00132Dr 1  A5 AD                lda     $AD
+00132Fr 1  C9 20                cmp     #$20
+001331r 1  F0 09                beq     LC828
+001333r 1  BE rr rr     LC81F:  ldx     LC204-1,y
+001336r 1  B9 rr rr             lda     LC20C-1,y
+001339r 1  20 rr rr             jsr     LC681
+00133Cr 1  88           LC828:  dey
+00133Dr 1  D0 F4                bne     LC81F
+00133Fr 1  A5 AB                lda     $AB
+001341r 1  10 01                bpl     LC830
+001343r 1  C8                   iny
+001344r 1  C8           LC830:  iny
+001345r 1  20 rr rr     LC831:  jsr     LC68A           ; copy opcode plus arguments
+001348r 1  C6 B7                dec     $B7
+00134Ar 1  A5 B7                lda     $B7
+00134Cr 1  85 D3                sta     $D3
+00134Er 1  4C rr rr             jmp     LC597           ; disassemble
+001351r 1               
+001351r 1               ; ADDSUB
+001351r 1  20 rr rr     ADDSUB: jsr     GETWRD
+001354r 1  20 rr rr             jsr     GETCHR
+001357r 1  49 02                eor     #$02
+001359r 1  4A                   lsr
+00135Ar 1  4A                   lsr
+00135Br 1  08                   php
+00135Cr 1  20 rr rr             jsr     GETWRDX
+00135Fr 1  20 rr rr             jsr     LC351
+001362r 1  28                   plp
+001363r 1  B0 0C                bcs     LC8BA
+001365r 1  A5 FD                lda     $FD
+001367r 1  65 FB                adc     $FB
+001369r 1  AA                   tax
+00136Ar 1  A5 FE                lda     $FE
+00136Cr 1  65 FC                adc     $FC
+00136Er 1  38           LC8B7:  sec
+00136Fr 1  B0 09                bcs     LC8C3
+001371r 1  A5 FB        LC8BA:  lda     $FB
+001373r 1  E5 FD                sbc     $FD
+001375r 1  AA                   tax
+001376r 1  A5 FC                lda     $FC
+001378r 1  E5 FE                sbc     $FE
+00137Ar 1  A8           LC8C3:  tay
+00137Br 1  8A           LC8C4:  txa
+00137Cr 1               
+00137Cr 1                       ;; output 16-bit integer in A/Y as HEX, binary and decimal
+00137Cr 1  84 FC        LC8C5:  sty     $FC
+00137Er 1  85 FB                sta     $FB
+001380r 1  84 62                sty     $62
+001382r 1  85 63                sta     $63
+001384r 1  08                   php
+001385r 1  A9 00                lda     #$00
+001387r 1  85 D3                sta     $D3
+001389r 1  20 rr rr             jsr     LC675
+00138Cr 1  A5 FC                lda     $FC
+00138Er 1  D0 0F                bne     LC8E8
+001390r 1  20 rr rr             jsr     LC349
+001393r 1  A5 FB                lda     $FB
+001395r 1  20 rr rr             jsr     LC32A
+001398r 1  A5 FB                lda     $FB
+00139Ar 1  20 rr rr             jsr     LC3D0
+00139Dr 1  F0 03                beq     LC8EB
+00139Fr 1  20 rr rr     LC8E8:  jsr     LC323
+0013A2r 1  20 rr rr     LC8EB:  jsr     LC34C
+0013A5r 1  28                   plp
+0013A6r 1  4C rr rr             jmp     PRTINT
+0013A9r 1               
+0013A9r 1               ; Convert Hexadecimal
+0013A9r 1  20 rr rr     BEFHEX: jsr     LC28D
+0013ACr 1  AA                   tax
+0013ADr 1  A4 D3                ldy     $D3
+0013AFr 1  B1 D1                lda     ($D1),y
+0013B1r 1  49 20                eor     #$20
+0013B3r 1  F0 B9                beq     LC8B7
+0013B5r 1  8A                   txa
+0013B6r 1  A8                   tay
+0013B7r 1  20 rr rr             jsr     GETBYT
+0013BAr 1  38           LC919:  sec
+0013BBr 1  B0 BF                bcs     LC8C5
+0013BDr 1               
+0013BDr 1                       ; Convert Binary
+0013BDr 1  20 rr rr     BEFBIN: jsr     LC2B8
+0013C0r 1  A0 08                ldy     #$08
+0013C2r 1  48           LC921:  pha
+0013C3r 1  20 rr rr             jsr     GETCHR
+0013C6r 1  C9 31                cmp     #$31
+0013C8r 1  68                   pla
+0013C9r 1  2A                   rol
+0013CAr 1  88                   dey
+0013CBr 1  D0 F5                bne     LC921
+0013CDr 1  F0 EB                beq     LC919
+0013CFr 1               
+0013CFr 1               ;; Convert Decimal
+0013CFr 1  20 rr rr     BEFDEC: jsr     LC2B8
+0013D2r 1  A2 00                ldx     #$00
+0013D4r 1  8A                   txa
+0013D5r 1  86 FB        LC934:  stx     $FB
+0013D7r 1  85 FC                sta     $FC
+0013D9r 1  A8                   tay
+0013DAr 1  20 CF FF             jsr     CHRIN
+0013DDr 1  C9 3A                cmp     #$3A
+0013DFr 1  B0 9A                bcs     LC8C4
+0013E1r 1  E9 2F                sbc     #$2F
+0013E3r 1  B0 04                bcs     LC948
+0013E5r 1  38                   sec
+0013E6r 1  4C rr rr             jmp     LC8C4
+0013E9r 1  85 FD        LC948:  sta     $FD
+0013EBr 1  06 FB                asl     $FB
+0013EDr 1  26 FC                rol     $FC
+0013EFr 1  A5 FC                lda     $FC
+0013F1r 1  85 FE                sta     $FE
+0013F3r 1  A5 FB                lda     $FB
+0013F5r 1  0A                   asl
+0013F6r 1  26 FE                rol     $FE
+0013F8r 1  0A                   asl
+0013F9r 1  26 FE                rol     $FE
+0013FBr 1  18                   clc
+0013FCr 1  65 FB                adc     $FB
+0013FEr 1  08                   php
+0013FFr 1  18                   clc
+001400r 1  65 FD                adc     $FD
+001402r 1  AA                   tax
+001403r 1  A5 FE                lda     $FE
+001405r 1  65 FC                adc     $FC
+001407r 1  28                   plp
+001408r 1  69 00                adc     #$00
+00140Ar 1  4C rr rr             jmp     LC934
+00140Dr 1               
+00140Dr 1               ; OCCUPY (O)
+00140Dr 1  20 rr rr     OCCUPY: jsr     GETDW           ; get address range
+001410r 1  20 rr rr             jsr     LC28D           ; get data byte
+001413r 1  48                   pha
+001414r 1  20 rr rr             jsr     LC351           ; print CR
+001417r 1  68                   pla
+001418r 1  A2 00        LC9C7:  ldx     #$00
+00141Ar 1  81 FB        LC9C9:  sta     ($FB,x)
+00141Cr 1  48                   pha
+00141Dr 1  20 rr rr             jsr     LC463
+001420r 1  68                   pla
+001421r 1  90 F7                bcc     LC9C9
+001423r 1  60                   rts
+001424r 1               
+001424r 1               ; WRITE (W) - move memory
+001424r 1  20 rr rr     WRITE:  jsr     LC25A
+001427r 1  20 rr rr             jsr     LC351           ; print CR
+00142Ar 1  A5 A6        LC9D6:  lda     $A6
+00142Cr 1  D0 02                bne     LC9DC
+00142Er 1  C6 A7                dec     $A7
+001430r 1  C6 A6        LC9DC:  dec     $A6
+001432r 1  20 rr rr             jsr     LCA30
+001435r 1  86 B5                stx     $B5
+001437r 1  A0 02                ldy     #$02
+001439r 1  90 04                bcc     LC9EB
+00143Br 1  A2 02                ldx     #$02
+00143Dr 1  A0 00                ldy     #$00
+00143Fr 1  18           LC9EB:  clc
+001440r 1  A5 A6                lda     $A6
+001442r 1  65 AE                adc     $AE
+001444r 1  85 AA                sta     $AA
+001446r 1  A5 A7                lda     $A7
+001448r 1  65 AF                adc     $AF
+00144Ar 1  85 AB                sta     $AB
+00144Cr 1  A1 A4        LC9F8:  lda     ($A4,x)
+00144Er 1  81 A8                sta     ($A8,x)
+001450r 1  41 A8                eor     ($A8,x)
+001452r 1  05 B5                ora     $B5
+001454r 1  85 B5                sta     $B5
+001456r 1  A5 A4                lda     $A4
+001458r 1  C5 A6                cmp     $A6
+00145Ar 1  A5 A5                lda     $A5
+00145Cr 1  E5 A7                sbc     $A7
+00145Er 1  B0 1D                bcs     LCA29
+001460r 1  18           LCA0C:  clc
+001461r 1  B5 A4                lda     $A4,x
+001463r 1  79 rr rr             adc     LC06B,y
+001466r 1  95 A4                sta     $A4,x
+001468r 1  B5 A5                lda     $A5,x
+00146Ar 1  79 rr rr             adc     LC06B+1,y
+00146Dr 1  95 A5                sta     $A5,x
+00146Fr 1  8A                   txa
+001470r 1  18                   clc
+001471r 1  69 04                adc     #$04
+001473r 1  AA                   tax
+001474r 1  C9 07                cmp     #$07
+001476r 1  90 E8                bcc     LCA0C
+001478r 1  E9 08                sbc     #$08
+00147Ar 1  AA                   tax
+00147Br 1  B0 CF                bcs     LC9F8
+00147Dr 1  A5 B5        LCA29:  lda     $B5
+00147Fr 1  F0 0F                beq     LCA3C
+001481r 1  4C rr rr             jmp     ERROR
+001484r 1  38           LCA30:  sec
+001485r 1  A2 FE                ldx     #$FE
+001487r 1  B5 AA        LCA33:  lda     $AA,x
+001489r 1  F5 A6                sbc     $A6,x
+00148Br 1  95 B0                sta     $B0,x
+00148Dr 1  E8                   inx
+00148Er 1  D0 F7                bne     LCA33
+001490r 1  60           LCA3C:  rts
+001491r 1               
+001491r 1                       ;; Convert (C) - do V followed by W
+001491r 1  20 rr rr     CONVERT:jsr     LCA62           ; convert addresses
+001494r 1  4C rr rr             jmp     LC9D6           ; move memory
+001497r 1               
+001497r 1                       ;; Variation (V) - convert addresses referencing a memory region
+001497r 1  4C rr rr     MOVE:   jmp     LCA62
+00149Ar 1               
+00149Ar 1  C5 A7        LCA46:  cmp     $A7
+00149Cr 1  D0 02                bne     LCA4C
+00149Er 1  E4 A6                cpx     $A6
+0014A0r 1  B0 13        LCA4C:  bcs     LCA61
+0014A2r 1  C5 A5                cmp     $A5
+0014A4r 1  D0 02                bne     LCA54
+0014A6r 1  E4 A4                cpx     $A4
+0014A8r 1  90 0B        LCA54:  bcc     LCA61
+0014AAr 1  85 B4                sta     $B4
+0014ACr 1  8A                   txa
+0014ADr 1  18                   clc
+0014AEr 1  65 AE                adc     $AE
+0014B0r 1  AA                   tax
+0014B1r 1  A5 B4                lda     $B4
+0014B3r 1  65 AF                adc     $AF
+0014B5r 1  60           LCA61:  rts
+0014B6r 1               
+0014B6r 1  20 rr rr     LCA62:  jsr     LC25A           ; get address range and destination
+0014B9r 1  20 rr rr             jsr     GETDW           ; get range
+0014BCr 1  20 rr rr             jsr     LC351           ; print CR
+0014BFr 1  20 rr rr     LCA68:  jsr     LCA30
+0014C2r 1  20 rr rr     LCA6B:  jsr     LC4CB
+0014C5r 1  C8                   iny
+0014C6r 1  A9 10                lda     #$10
+0014C8r 1  24 AB                bit     $AB
+0014CAr 1  F0 26                beq     LCA9B
+0014CCr 1  A6 FB                ldx     $FB
+0014CEr 1  A5 FC                lda     $FC
+0014D0r 1  20 rr rr             jsr     LCA46
+0014D3r 1  86 AA                stx     $AA
+0014D5r 1  B1 FB                lda     ($FB),y
+0014D7r 1  85 B5                sta     $B5
+0014D9r 1  20 rr rr             jsr     LC54A
+0014DCr 1  A0 01                ldy     #$01
+0014DEr 1  20 rr rr             jsr     LCA46
+0014E1r 1  CA                   dex
+0014E2r 1  8A                   txa
+0014E3r 1  18                   clc
+0014E4r 1  E5 AA                sbc     $AA
+0014E6r 1  91 FB                sta     ($FB),y
+0014E8r 1  45 B5                eor     $B5
+0014EAr 1  10 19                bpl     LCAAE
+0014ECr 1  20 rr rr             jsr     LC351
+0014EFr 1  20 rr rr             jsr     LC323
+0014F2r 1  24 AB        LCA9B:  bit     $AB
+0014F4r 1  10 0F                bpl     LCAAE
+0014F6r 1  B1 FB                lda     ($FB),y
+0014F8r 1  AA                   tax
+0014F9r 1  C8                   iny
+0014FAr 1  B1 FB                lda     ($FB),y
+0014FCr 1  20 rr rr             jsr     LCA46
+0014FFr 1  91 FB                sta     ($FB),y
+001501r 1  8A                   txa
+001502r 1  88                   dey
+001503r 1  91 FB                sta     ($FB),y
+001505r 1  20 rr rr     LCAAE:  jsr     LC66A
+001508r 1  20 rr rr             jsr     LC466
+00150Br 1  90 B5                bcc     LCA6B
+00150Dr 1  60                   rts
+00150Er 1               
+00150Er 1                       ;; KONTROLLE (K)
+00150Er 1               KONTROLLE:
+00150Er 1  20 rr rr             jsr     GETSE
+001511r 1  A2 27        LCABA:  ldx     #$27
+001513r 1  20 rr rr             jsr     LC340
+001516r 1  20 rr rr             jsr     LC323
+001519r 1  A0 08                ldy     #$08
+00151Br 1  A2 00                ldx     #$00
+00151Dr 1  20 rr rr             jsr     LC34C
+001520r 1  A1 FB        LCAC9:  lda     ($FB,x)         ; get next byte
+001522r 1  20 rr rr             jsr     LC439           ; write ASCII char of byte directly to screen
+001525r 1  D0 F9                bne     LCAC9           ; repeat until end of line
+001527r 1  20 rr rr             jsr     PREOL           ; print to end of line
+00152Ar 1  A2 00                ldx     #$00
+00152Cr 1  20 rr rr             jsr     LC45D
+00152Fr 1  F0 03                beq     LCADA
+001531r 1  4C rr rr             jmp     LCABA
+001534r 1  60           LCADA:  rts
+001535r 1               
+001535r 1                       ;; TICK (' - read ASCII chars to memory)
+001535r 1  20 rr rr     TICK:   jsr     GETWRD          ; get starting address
+001538r 1  A0 03                ldy     #$03            ; skip up to 3 spaces
+00153Ar 1  20 CF FF     LCAE0:  jsr     CHRIN
+00153Dr 1  C9 20                cmp     #' '            ; is it a space?
+00153Fr 1  D0 12                bne     TSTRT           ; jump if not
+001541r 1  88                   dey
+001542r 1  D0 F6                bne     LCAE0
+001544r 1  20 CF FF     TLOOP:  jsr     CHRIN           ; get character
+001547r 1  C9 0D        TLOOP1: cmp     #$0D            ; is it CR?
+001549r 1  F0 07                beq     TEND            ; done if so
+00154Br 1  91 FB                sta     ($FB),y         ; store character
+00154Dr 1  C8           LCAEF:  iny
+00154Er 1  C0 48                cpy     #72             ; do we have 72 characters yet?
+001550r 1  90 F2                bcc     TLOOP           ; loop if not
+001552r 1  60           TEND:   rts
+001553r 1  A0 00        TSTRT:  ldy     #0
+001555r 1  4C rr rr             jmp     TLOOP1
+001558r 1               
+001558r 1  20 rr rr     EQUALS: jsr     GETDW
+00155Br 1  A2 00                ldx     #$00
+00155Dr 1  A1 FB        LCAFA:  lda     ($FB,x)
+00155Fr 1  C1 FD                cmp     ($FD,x)
+001561r 1  D0 0B                bne     LCB0B
+001563r 1  20 rr rr             jsr     LC367
+001566r 1  E6 FD                inc     $FD
+001568r 1  D0 F3                bne     LCAFA
+00156Ar 1  E6 FE                inc     $FE
+00156Cr 1  D0 EF                bne     LCAFA
+00156Er 1  20 rr rr     LCB0B:  jsr     LC34C
+001571r 1  4C rr rr             jmp     LC323
+001574r 1               
+001574r 1               ; FIND (F)
+001574r 1  A9 FF        FIND:   lda     #$FF            ; set start and end address to $FFFF
+001576r 1  A2 04                ldx     #$04
+001578r 1  95 FA        LCB15:  sta     $FA,x
+00157Ar 1  CA                   dex
+00157Br 1  D0 FB                bne     LCB15
+00157Dr 1  20 rr rr             jsr     GETCHR          ; get next character
+001580r 1  A2 05                ldx     #$05
+001582r 1  DD rr rr     LCB1F:  cmp     FSCMD-1,x       ; compare with sub-command char (AZIRT)
+001585r 1  F0 40                beq     LCB69           ; jump if found
+001587r 1  CA                   dex
+001588r 1  D0 F8                bne     LCB1F           ; repeat until all checked
+00158Ar 1               
+00158Ar 1                       ;; no sub-command found => plain "F" (find bytes)
+00158Ar 1                       ;; (X=0 at this point)
+00158Ar 1  86 A9        LCB27:  stx     $A9             ; store number of bytes
+00158Cr 1  20 rr rr             jsr     LCBB4           ; get search data for byte (two nibbles+bit masks)
+00158Fr 1  E8                   inx                     ; next byte
+001590r 1  20 CF FF             jsr     CHRIN           ; get next character
+001593r 1  C9 20                cmp     #' '            ; is it space?
+001595r 1  F0 F3                beq     LCB27           ; skip if so
+001597r 1  C9 2C                cmp     #$2C            ; is it ","
+001599r 1  D0 03                bne     LCB3B           ; repeat if not
+00159Br 1  20 rr rr             jsr     GETDW           ; get start and end address of range
+00159Er 1  20 rr rr     LCB3B:  jsr     LC351           ; print CR
+0015A1r 1  A4 A9        LCB3E:  ldy     $A9             ; get number of bytes in sequence
+0015A3r 1  B1 FB        LCB40:  lda     ($FB),y         ; get next byte in memory
+0015A5r 1  20 rr rr             jsr     LCBD6           ; compare A with byte in expected sequence
+0015A8r 1  D0 15                bne     LCB5F           ; jump if no match
+0015AAr 1  88                   dey                     ; next byte
+0015ABr 1  10 F6                bpl     LCB40           ; repeat until last byte in dequence
+0015ADr 1  20 rr rr             jsr     LC323           ; found a match => print current address
+0015B0r 1  20 rr rr             jsr     LC34C           ; print space
+0015B3r 1  A4 D3                ldy     $D3             ; get cursor coumn
+0015B5r 1  C0 4C                cpy     #76             ; compare to 76
+0015B7r 1  90 06                bcc     LCB5F           ; jump if less
+0015B9r 1  20 rr rr             jsr     LC472           ; handle PAUSE/STOP
+0015BCr 1  20 rr rr             jsr     LC351           ; print CR
+0015BFr 1  20 rr rr     LCB5F:  jsr     LC463           ; increment current location and check end
+0015C2r 1  90 DD                bcc     LCB3E           ; repeat if end has not been reached
+0015C4r 1  A0 27                ldy     #$27
+0015C6r 1  60                   rts
+0015C7r 1               
+0015C7r 1                       ;; execute "find" sub-command AZIRT with index in X
+0015C7r 1  BD rr rr     LCB69:  lda     LC074-1,x
+0015CAr 1  85 A8                sta     $A8
+0015CCr 1  BD rr rr             lda     LC079-1,x       ; get length of data item (2=word/1=byte/0=none)
+0015CFr 1  85 A9                sta     $A9             ; store
+0015D1r 1  AA                   tax                     ; into x
+0015D2r 1  F0 06                beq     LCB7C           ; skip getting argument if 0
+0015D4r 1  20 rr rr     LCB76:  jsr     LCBB4           ; get two nibbles
+0015D7r 1  CA                   dex                     ; do we need more (i.e. word)?
+0015D8r 1  D0 FA                bne     LCB76           ; jump if so
+0015DAr 1  20 rr rr     LCB7C:  jsr     GETDW           ; get start and end address
+0015DDr 1  20 rr rr     LCB7F:  jsr     LC4CB
+0015E0r 1  20 rr rr             jsr     LC52C
+0015E3r 1  A5 A8                lda     $A8
+0015E5r 1  24 AB                bit     $AB
+0015E7r 1  D0 09                bne     LCB94
+0015E9r 1  A8                   tay
+0015EAr 1  D0 21                bne     LCBAF
+0015ECr 1  A5 AD                lda     $AD
+0015EEr 1  D0 1D                bne     LCBAF
+0015F0r 1  F0 0D                beq     LCBA1
+0015F2r 1  A4 A9        LCB94:  ldy     $A9
+0015F4r 1  B9 AD 00     LCB96:  lda     $AD,y
+0015F7r 1  20 rr rr             jsr     LCBD6
+0015FAr 1  D0 11                bne     LCBAF
+0015FCr 1  88                   dey
+0015FDr 1  D0 F5                bne     LCB96
+0015FFr 1  84 AA        LCBA1:  sty     $AA
+001601r 1  20 rr rr             jsr     LC58C           ; disassemble one opcode at current addres
+001604r 1  20 rr rr             jsr     LC472           ; handle PAUSE/STOP
+001607r 1  20 rr rr     LCBA9:  jsr     LC466           ; check whether end address has been reached
+00160Ar 1  90 D1                bcc     LCB7F           ; repeat if not
+00160Cr 1  60                   rts
+00160Dr 1               
+00160Dr 1  20 rr rr     LCBAF:  jsr     LC66A
+001610r 1  F0 F5                beq     LCBA9
+001612r 1               
+001612r 1                       ;; get two nibbles with bit mask from command line
+001612r 1                       ;; first  goes into $036C+x (bit mask in $03CC+x)
+001612r 1                       ;; second goes into $033C+x (bit mask in $039C+x)
+001612r 1  20 rr rr     LCBB4:  jsr     LCBC0
+001615r 1  9D CC 03             sta     $03CC,x
+001618r 1  BD 3C 03             lda     $033C,x
+00161Br 1  9D 6C 03             sta     $036C,x
+00161Er 1               
+00161Er 1                       ;; get nibble from command line, checking for wildcard ('*')
+00161Er 1  20 rr rr     LCBC0:  jsr     GETCHR          ; get character
+001621r 1  A0 0F                ldy     #$0F            ; bit mask $0F
+001623r 1  C9 2A                cmp     #'*'            ; is it '*'?
+001625r 1  D0 02                bne     LCBCB           ; jump if not
+001627r 1  A0 00                ldy     #$00            ; bit mask $00
+001629r 1  20 rr rr     LCBCB:  jsr     LC2AF           ; convert char to nibble $0-$F
+00162Cr 1  9D 3C 03             sta     $033C,x         ; store nibble
+00162Fr 1  98                   tya
+001630r 1  9D 9C 03             sta     $039C,x         ; store bit mask
+001633r 1  60                   rts
+001634r 1               
+001634r 1                       ;; compare byte in A with byte Y of expected sequence
+001634r 1                       ;; return with Z set if matching
+001634r 1  85 B4        LCBD6:  sta     $B4             ; temp storage
+001636r 1  4A                   lsr                     ; get high nibble into low
+001637r 1  4A                   lsr
+001638r 1  4A                   lsr
+001639r 1  4A                   lsr
+00163Ar 1  59 6C 03             eor     $036C,y         ; zero-out bits that match for high nibble
+00163Dr 1  39 CC 03             and     $03CC,y         ; zero-out bits according to bit mask for high nibble
+001640r 1  29 0F                and     #$0F            ; only bits 0-3
+001642r 1  D0 0A                bne     LCBF0           ; if not zero then we have a difference
+001644r 1  A5 B4                lda     $B4             ; get byte back
+001646r 1  59 3C 03             eor     $033C,y         ; zero-out bits that match for low nibble
+001649r 1  39 9C 03             and     $039C,y         ; zero-out bits according to bit mask for low nibble
+00164Cr 1  29 0F                and     #$0F            ; only bits 0-3
+00164Er 1  60           LCBF0:  rts
+00164Fr 1               
+00164Fr 1                       ;; memory size (MS)
+00164Fr 1  A2 03        MEMSIZ: ldx     #3
+001651r 1  A2 01        MSL1:   ldx     #$01            ; get 00,01,FF,FF
+001653r 1  86 FC                stx     $FC             ; into FB-FE
+001655r 1  CA                   dex
+001656r 1  86 FB                stx     $FB
+001658r 1  CA                   dex
+001659r 1  86 FD                stx     $FD
+00165Br 1  86 FE                stx     $FE
+00165Dr 1  20 rr rr             jsr     LC351           ; print CR
+001660r 1  A2 00                ldx     #$00
+001662r 1  A1 FB        MSL2:   lda     ($FB,x)         ; save current value
+001664r 1  A8                   tay
+001665r 1  A9 55                lda     #$55
+001667r 1  81 FB                sta     ($FB,x)
+001669r 1  C1 FB                cmp     ($FB,x)
+00166Br 1  D0 14                bne     MSL5
+00166Dr 1  A9 AA                lda     #$AA
+00166Fr 1  81 FB                sta     ($FB,x)
+001671r 1  C1 FB                cmp     ($FB,x)
+001673r 1  D0 0C                bne     MSL5
+001675r 1  98           MSL4:   tya
+001676r 1  81 FB                sta     ($FB,x)         ; restore original value
+001678r 1  20 rr rr             jsr     LC367           ; increment address
+00167Br 1  20 rr rr             jsr     LC466           ; check if we've tested the whole range
+00167Er 1  90 E2                bcc     MSL2            ; repeat if not
+001680r 1  2C                   .byte   $2C             ; skip following 2-byte opcode
+001681r 1  81 FB        MSL5:   sta     ($FB,x)
+001683r 1  20 rr rr             jsr     LC323           ; print current address
+001686r 1  60                   rts                     ; done
+001687r 1               
+001687r 1                       ;; memory test (MT)
+001687r 1  A2 A4        MEMTST: ldx     #$A4
+001689r 1  20 rr rr             jsr     GETWRDX         ; get start address
+00168Cr 1  20 rr rr             jsr     GETWRDX         ; get end address
+00168Fr 1  A0 01                ldy     #1              ; default: 1 repetition
+001691r 1  20 rr rr             jsr     PEEKCH          ; do we have more arguments?
+001694r 1  F0 04                beq     MTL1            ; skip if not
+001696r 1  20 rr rr             jsr     LC28D           ; get number of repetitions
+001699r 1  A8                   tay
+00169Ar 1  84 FF        MTL1:   sty     $FF             ; store number of repetitions
+00169Cr 1  A5 FC                lda     $FC             ; get high byte of start address
+00169Er 1  D0 03                bne     MTL2            ; is it greater than zero?
+0016A0r 1  4C rr rr             jmp     ERROR           ; no => can't test zero-page memory
+0016A3r 1  20 rr rr     MTL2:   jsr     LC351           ; print CR
+0016A6r 1  A2 03        MTL3:   ldx     #3
+0016A8r 1  B5 A4        MTL4:   lda     $A4,x           ; get start and end address back
+0016AAr 1  95 FB                sta     $FB,x           ; from temp to FB-FE
+0016ACr 1  CA                   dex
+0016ADr 1  10 F9                bpl     MTL4
+0016AFr 1  A2 00                ldx     #0
+0016B1r 1  A1 FB        MTL5:   lda     ($FB,x)         ; save current value
+0016B3r 1  A8                   tay
+0016B4r 1  A9 00                lda     #$00
+0016B6r 1  81 FB                sta     ($FB,x)
+0016B8r 1  C1 FB                cmp     ($FB,x)
+0016BAr 1  D0 18                bne     MTL6
+0016BCr 1  A9 55                lda     #$55
+0016BEr 1  81 FB                sta     ($FB,x)
+0016C0r 1  C1 FB                cmp     ($FB,x)
+0016C2r 1  D0 10                bne     MTL6
+0016C4r 1  A9 AA                lda     #$AA
+0016C6r 1  81 FB                sta     ($FB,x)
+0016C8r 1  C1 FB                cmp     ($FB,x)
+0016CAr 1  D0 08                bne     MTL6
+0016CCr 1  A9 FF                lda     #$FF
+0016CEr 1  81 FB                sta     ($FB,x)
+0016D0r 1  C1 FB                cmp     ($FB,x)
+0016D2r 1  F0 06                beq     MTL7
+0016D4r 1  20 rr rr     MTL6:   jsr     LC323           ; fail: output current address
+0016D7r 1  20 rr rr             jsr     LC34C           ; output space
+0016DAr 1  98           MTL7:   tya
+0016DBr 1  81 FB                sta     ($FB,x)         ; restore original value
+0016DDr 1  20 rr rr             jsr     LC367           ; increment address
+0016E0r 1  20 rr rr             jsr     LC466           ; check if we've tested the whole range
+0016E3r 1  90 CC                bcc     MTL5            ; repeat if not
+0016E5r 1  A9 2B                lda     #'+'            ; print pacifier
+0016E7r 1  20 D2 FF             jsr     $FFD2
+0016EAr 1  C6 FF                dec     $FF             ; decrement repetition count
+0016ECr 1  D0 B8                bne     MTL3            ; go again until 0
+0016EEr 1  60                   rts
+0016EFr 1               
+0016EFr 1               ; TRACE (Tx)
+0016EFr 1               TRACE:  .if     (.not VIA)
+0016EFr 1                       jmp     ERROR           ; can only do trace if we have a VIA
+0016EFr 1                       .endif
+0016EFr 1  68                   pla
+0016F0r 1  68                   pla
+0016F1r 1  20 CF FF             jsr     CHRIN
+0016F4r 1  20 rr rr             jsr     UCASE
+0016F7r 1  C9 57                cmp     #$57
+0016F9r 1  D0 03                bne     LCBFD
+0016FBr 1  4C rr rr             jmp     LCD56           ; TW command
+0016FEr 1  C9 42        LCBFD:  cmp     #$42
+001700r 1  D0 03                bne     LCC04
+001702r 1  4C rr rr             jmp     LCDD0           ; TB command
+001705r 1  C9 51        LCC04:  cmp     #$51
+001707r 1  D0 03                bne     LCC0B
+001709r 1  4C rr rr             jmp     LCD4F           ; TQ command
+00170Cr 1  C9 53        LCC0B:  cmp     #$53
+00170Er 1  F0 03                beq     LCC12           ; TS command
+001710r 1  4C rr rr             jmp     ERROR
+001713r 1               
+001713r 1                       ;; Trace Stop (TS)
+001713r 1  20 rr rr     LCC12:  jsr     LC28D
+001716r 1  48                   pha
+001717r 1  20 rr rr             jsr     LC28D
+00171Ar 1  48                   pha
+00171Br 1  20 rr rr             jsr     LC249
+00171Er 1  A0 00                ldy     #$00
+001720r 1  B1 FB                lda     ($FB),y
+001722r 1  8D BC 02             sta     $02BC
+001725r 1  98                   tya
+001726r 1  91 FB                sta     ($FB),y
+001728r 1  A9 rr                lda     #<TBINT         ; set BREAK vector
+00172Ar 1  8D 16 03             sta     BRK_LO          ; to breakpoint entry
+00172Dr 1  A9 rr                lda     #>TBINT
+00172Fr 1  8D 17 03             sta     BRK_HI
+001732r 1  A2 FC                ldx     #$FC
+001734r 1  4C rr rr             jmp     LC3EC
+001737r 1               
+001737r 1                       ;; entry point after breakpoint is hit
+001737r 1  A2 03        TBINT:  ldx     #$03
+001739r 1  68           LCC38:  pla
+00173Ar 1  9D AA 02             sta     SRSAVE,x
+00173Dr 1  CA                   dex
+00173Er 1  10 F9                bpl     LCC38
+001740r 1  68                   pla
+001741r 1  68                   pla
+001742r 1  BA                   tsx
+001743r 1  8E AE 02             stx     SPSAVE
+001746r 1  AD A8 02             lda     PCHSAVE
+001749r 1  85 FC                sta     $FC
+00174Br 1  AD A9 02             lda     PCLSAVE
+00174Er 1  85 FB                sta     $FB
+001750r 1  AD BC 02             lda     $02BC
+001753r 1  A0 00                ldy     #$00
+001755r 1  91 FB                sta     ($FB),y
+001757r 1  A9 rr                lda     #<SMON          ; restore BREAK vector
+001759r 1  8D 16 03             sta     BRK_LO          ; to SMON main loop
+00175Cr 1  A9 rr                lda     #>SMON
+00175Er 1  8D 17 03             sta     BRK_HI
+001761r 1  A9 52                lda     #$52
+001763r 1  4C rr rr             jmp     LC2FF
+001766r 1  20 rr rr     LCC65:  jsr     LC351
+001769r 1  60           RTSCMD: rts
+00176Ar 1  8D AB 02             sta     AKSAVE
+00176Dr 1  08                   php
+00176Er 1  68                   pla
+00176Fr 1  29 EF                and     #$EF
+001771r 1  8D AA 02             sta     SRSAVE
+001774r 1  8E AC 02             stx     XRSAVE
+001777r 1  8C AD 02             sty     YSAVE
+00177Ar 1  68                   pla
+00177Br 1  18                   clc
+00177Cr 1  69 01                adc     #$01
+00177Er 1  8D A9 02             sta     PCLSAVE
+001781r 1  68                   pla
+001782r 1  69 00                adc     #$00
+001784r 1  8D A8 02             sta     PCHSAVE
+001787r 1  A9 80                lda     #$80
+001789r 1  8D BC 02             sta     $02BC
+00178Cr 1  D0 12                bne     LCCA5
+00178Er 1               
+00178Er 1                       ;; entry point from TW after an instruction has been executed
+00178Er 1                       ;; (via timer interrupt)
+00178Er 1  A9 40        TWINT:  lda     #$40            ; clear VIA timer 1 interrupt flag
+001790r 1  8D 0D 90             sta     VIA_IFR
+001793r 1  20 rr rr             jsr     LCDE5           ; restore IRQ vector
+001796r 1  D8                   cld                     ; make sure "decimal" flag is not set
+001797r 1                       .if     (UART_TYPE = 6522)      ; if VIA is also used as UART
+001797r 1                       lda     #$40            ; set T1 free run, T2 clock ?2
+001797r 1                       sta     VIA_ACR         ; set VIA 1 ACR
+001797r 1                       lda	#$40		; disable VIA timer 1 interrupt
+001797r 1               	sta	VIA_IER		; set VIA 1 IER
+001797r 1                       lda	#$90		; enable VIA CB1 interrupt
+001797r 1               	sta	VIA_IER		; set VIA 1 IER
+001797r 1                       .endif
+001797r 1  A2 05                ldx     #$05            ; get registers from stack
+001799r 1  68           LCC9E:  pla                     ; (were put there when IRQ happened)
+00179Ar 1  9D A8 02             sta     PCHSAVE,x       ; store them in PCHSAVE area
+00179Dr 1  CA                   dex
+00179Er 1  10 F9                bpl     LCC9E
+0017A0r 1  AD 14 03     LCCA5:  lda     IRQ_LO          ; save IRQ pointer
+0017A3r 1  8D BB 02             sta     $02BB
+0017A6r 1  AD 15 03             lda     IRQ_HI
+0017A9r 1  8D BA 02             sta     $02BA
+0017ACr 1  BA                   tsx
+0017ADr 1  8E AE 02             stx     SPSAVE          ; save stack pointer
+0017B0r 1  58                   cli                     ; allow interrupts
+0017B1r 1               
+0017B1r 1  AD AA 02             lda     SRSAVE
+0017B4r 1  29 10                and     #$10
+0017B6r 1  F0 08                beq     LCCC5
+0017B8r 1  20 rr rr     LCCBD:  jsr     LCC65
+0017BBr 1  A9 52                lda     #$52
+0017BDr 1  4C rr rr             jmp     LC2FF
+0017C0r 1  2C BC 02     LCCC5:  bit     $02BC
+0017C3r 1  50 1F                bvc     LCCE9
+0017C5r 1  38                   sec
+0017C6r 1  AD A9 02             lda     PCLSAVE
+0017C9r 1  ED BD 02             sbc     $02BD
+0017CCr 1  8D B1 02             sta     $02B1
+0017CFr 1  AD A8 02             lda     PCHSAVE
+0017D2r 1  ED BE 02             sbc     $02BE
+0017D5r 1  0D B1 02             ora     $02B1
+0017D8r 1  D0 67                bne     LCD46
+0017DAr 1  AD BF 02             lda     $02BF
+0017DDr 1  D0 5F                bne     LCD43
+0017DFr 1  A9 80                lda     #$80
+0017E1r 1  8D BC 02             sta     $02BC
+0017E4r 1  30 12        LCCE9:  bmi     LCCFD
+0017E6r 1  4E BC 02             lsr     $02BC
+0017E9r 1  90 CD                bcc     LCCBD
+0017EBr 1  AE AE 02             ldx     SPSAVE
+0017EEr 1  9A                   txs
+0017EFr 1  A9 rr                lda     #>RTSCMD
+0017F1r 1  48                   pha
+0017F2r 1  A9 rr                lda     #<RTSCMD
+0017F4r 1  48                   pha
+0017F5r 1  4C rr rr             jmp     LCDBA
+0017F8r 1  20 rr rr     LCCFD:  jsr     LCC65
+0017FBr 1  A9 A8                lda     #$A8
+0017FDr 1  85 FB                sta     $FB
+0017FFr 1  A9 02                lda     #$02
+001801r 1  85 FC                sta     $FC
+001803r 1  20 rr rr             jsr     LC34C
+001806r 1  A0 00                ldy     #$00
+001808r 1  B1 FB        LCD0D:  lda     ($FB),y
+00180Ar 1  20 rr rr             jsr     LC32A
+00180Dr 1  C8                   iny
+00180Er 1  C0 07                cpy     #$07
+001810r 1  F0 09                beq     LCD20
+001812r 1  C0 01                cpy     #$01
+001814r 1  F0 F2                beq     LCD0D
+001816r 1  20 rr rr             jsr     LC34C
+001819r 1  D0 ED                bne     LCD0D
+00181Br 1  AD A9 02     LCD20:  lda     PCLSAVE         ; get PC
+00181Er 1  AE A8 02             ldx     PCHSAVE
+001821r 1  85 FB                sta     $FB             ; set it as current address
+001823r 1  86 FC                stx     $FC
+001825r 1  20 rr rr             jsr     LC349           ; output two spaces
+001828r 1  20 rr rr             jsr     LC4CB           ;
+00182Br 1  20 rr rr             jsr     LC5C7           ; disassemble next opcode
+00182Er 1  20 E4 FF     LCD33:  jsr     GETIN           ; get keyboard key
+001831r 1  F0 FB                beq     LCD33           ; wait until we have something
+001833r 1  C9 4A                cmp     #$4A            ; was it 'J'?
+001835r 1  D0 0A                bne     LCD46           ; jump if not
+001837r 1  A9 01                lda     #$01
+001839r 1  8D BC 02             sta     $02BC
+00183Cr 1  D0 2F                bne     LCD72           ; take next TW step
+00183Er 1  CE BF 02     LCD43:  dec     $02BF
+001841r 1  A5 91        LCD46:  lda     $91             ; get "STOP" flag
+001843r 1  C9 7F                cmp     #$7F            ; is it set?
+001845r 1  D0 26                bne     LCD72           ; if not, take next TW step
+001847r 1  4C rr rr             jmp     LCCBD
+00184Ar 1               
+00184Ar 1                       ;; Trace Quick (TQ)
+00184Ar 1  20 rr rr     LCD4F:  jsr     LCDF2
+00184Dr 1  A9 40                lda     #$40
+00184Fr 1  D0 0A                bne     LCD60
+001851r 1               
+001851r 1                       ;; Trace Walk (TW)
+001851r 1  20 rr rr     LCD56:  jsr     LCDF2
+001854r 1  08                   php
+001855r 1  68                   pla
+001856r 1  8D AA 02             sta     SRSAVE
+001859r 1  A9 80                lda     #$80
+00185Br 1  8D BC 02     LCD60:  sta     $02BC
+00185Er 1  BA                   tsx
+00185Fr 1  8E AE 02             stx     SPSAVE
+001862r 1  20 rr rr             jsr     LC249
+001865r 1  20 rr rr             jsr     LCC65
+001868r 1  AD BC 02             lda     $02BC
+00186Br 1  F0 24                beq     LCDA9
+00186Dr 1               LCD72:  .if     (UART_TYPE = 6522)      ; if VIA is also used as UART
+00186Dr 1                       lda     VIA_IER         ; get enabled VIA interrupts
+00186Dr 1                       and     #$60            ; isolate T1 and T2 interrupts
+00186Dr 1                       bne     LCD72           ; wait until both disabled (UART is idle)
+00186Dr 1                       .endif
+00186Dr 1  78                   sei
+00186Er 1  A9 7F                lda     #$7F
+001870r 1  8D 0E 90             sta     VIA_IER         ; disable all VIA interrupts
+001873r 1  A9 C0                lda     #$C0
+001875r 1  8D 0E 90             sta     VIA_IER         ; enable VIA timer 1 interrupt
+001878r 1  A9 00                lda     #$00
+00187Ar 1  8D 0B 90             sta     VIA_ACR         ; VIA timer 1 one-shot mode
+00187Dr 1  A2 00                ldx     #0
+00187Fr 1  A9 49                lda     #73             ; 73 cycles until timer expires
+001881r 1  8D 06 90             sta     VIA_T1LL        ; set VIA timer 1 low-order latch
+001884r 1  8E 05 90             stx     VIA_T1CH        ; set VIA timer 1 high-order counter (start timer)
+001887r 1  A9 rr                lda     #<TWINT         ; (2)
+001889r 1  A2 rr                ldx     #>TWINT         ; (2)
+00188Br 1  8D BB 02             sta     $02BB           ; (4)
+00188Er 1  8E BA 02             stx     $02BA           ; (4)
+001891r 1  AE AE 02     LCDA9:  ldx     SPSAVE          ; (4)
+001894r 1  9A                   txs                     ; (2)
+001895r 1  58                   cli                     ; (2)
+001896r 1  AD BB 02             lda     $02BB           ; (4)
+001899r 1  AE BA 02             ldx     $02BA           ; (4)
+00189Cr 1  8D 14 03             sta     IRQ_LO          ; (4)
+00189Fr 1  8E 15 03             stx     IRQ_HI          ; (4)
+0018A2r 1  AD A8 02     LCDBA:  lda     PCHSAVE         ; (4)
+0018A5r 1  48                   pha                     ; (3)
+0018A6r 1  AD A9 02             lda     PCLSAVE         ; (4)
+0018A9r 1  48                   pha                     ; (3)
+0018AAr 1  AD AA 02             lda     SRSAVE          ; (4)
+0018ADr 1  48                   pha                     ; (3)
+0018AEr 1  AD AB 02             lda     AKSAVE          ; (4)
+0018B1r 1  AE AC 02             ldx     XRSAVE          ; (4)
+0018B4r 1  AC AD 02             ldy     YSAVE           ; (4)
+0018B7r 1  40                   rti                     ; (6) => total 75 cycles, timer expires during RTI?
+0018B8r 1               
+0018B8r 1                       ;; Trace Break (TB)
+0018B8r 1  20 rr rr     LCDD0:  jsr     LC28D
+0018BBr 1  8D BE 02             sta     $02BE
+0018BEr 1  20 rr rr             jsr     LC28D
+0018C1r 1  8D BD 02             sta     $02BD
+0018C4r 1  20 rr rr             jsr     LC28D
+0018C7r 1  8D BF 02             sta     $02BF
+0018CAr 1  4C rr rr             jmp     LC2D6
+0018CDr 1               
+0018CDr 1                       ;; restore IRQ vector
+0018CDr 1  AD B8 02     LCDE5:  lda     $02B8
+0018D0r 1  AE B9 02             ldx     $02B9
+0018D3r 1  8D 14 03             sta     IRQ_LO
+0018D6r 1  8E 15 03             stx     IRQ_HI
+0018D9r 1  60                   rts
+0018DAr 1               
+0018DAr 1                       ;; save IRQ vector and set BRK vector to entry point
+0018DAr 1  AD 14 03     LCDF2:  lda     IRQ_LO
+0018DDr 1  AE 15 03             ldx     IRQ_HI
+0018E0r 1  8D B8 02             sta     $02B8
+0018E3r 1  8E B9 02             stx     $02B9
+0018E6r 1  A9 rr                lda     #<TWINT
+0018E8r 1  8D 16 03             sta     BRK_LO
+0018EBr 1  A9 rr                lda     #>TWINT
+0018EDr 1  8D 17 03             sta     BRK_HI
+0018F0r 1  60                   rts
+0018F1r 1               
+0018F1r 1               ;;; ----------------------------------------------------------------------------
+0018F1r 1               ;;; ---------------------------  C64 KERNAL routines   -------------------------
+0018F1r 1               ;;; ----------------------------------------------------------------------------
+0018F1r 1               
+0018F1r 1               LINEBUF         = $0400         ; line ("screen") buffer memory start
+0018F1r 1               NUMCOLS         = 80            ; number of columns per row
+0018F1r 1               NUMROWS         = 24            ; number of rows
+0018F1r 1               INPUT_UCASE     = 0             ; do not automatically convert input to uppercase
+0018F1r 1               SUPPRESS_NP     = 0             ; do not suppress any characters on output
+0018F1r 1               
+0018F1r 1                       ;; print 16-bit integer in $62/$63 as decimal value, adapted from:
+0018F1r 1                       ;; https://beebwiki.mdfs.net/Number_output_in_6502_machine_code#16-bit_decimal
+0018F1r 1  A0 08        PRTINT: LDY #8                  ; offset to powers of ten
+0018F3r 1  A9 00                LDA #$00
+0018F5r 1  85 64                STA $64                 ; $64 = flag: 0=no digits printed yet
+0018F7r 1  A2 FF        PRL1:   LDX #$FF
+0018F9r 1  38                   SEC                     ; start with digit=-1
+0018FAr 1  A5 63        PRL2:   LDA $63
+0018FCr 1  F9 rr rr             SBC PRPOW+0,Y
+0018FFr 1  85 63                STA $63                 ; subtract current tens
+001901r 1  A5 62                LDA $62
+001903r 1  F9 rr rr             SBC PRPOW+1,Y
+001906r 1  85 62                STA $62
+001908r 1  E8                   INX
+001909r 1  B0 EF                BCS PRL2                ; loop until <0
+00190Br 1  A5 63                LDA $63                 ; add current tens back in
+00190Dr 1  79 rr rr             ADC PRPOW+0,Y
+001910r 1  85 63                STA $63
+001912r 1  A5 62                LDA $62
+001914r 1  79 rr rr             ADC PRPOW+1,Y
+001917r 1  85 62                STA $62
+001919r 1  8A                   TXA
+00191Ar 1  D0 08                BNE PRL4                ; non-zero digit => always print
+00191Cr 1  C0 00                CPY #0                  ; Y=0 means last digit (ones)
+00191Er 1  F0 04                BEQ PRL4                ; always print last digit
+001920r 1  A5 64                LDA $64                 ; check if we've printed any digits
+001922r 1  F0 0A                BEQ PRL3                ; skip leading zeros
+001924r 1  8A           PRL4:   TXA
+001925r 1  09 30                ORA #'0'                ; convert to 0-9 digit
+001927r 1  20 D2 FF             JSR CHROUT              ; output character
+00192Ar 1  A9 01                LDA #$01
+00192Cr 1  85 64                STA $64                 ; mark that we've printed a digit
+00192Er 1  88           PRL3:   DEY
+00192Fr 1  88                   DEY
+001930r 1  10 C5                BPL PRL1                ; Loop for next digit
+001932r 1  60                   RTS
+001933r 1  01 00 0A 00  PRPOW:  .word 1, 10, 100, 1000, 10000
+001937r 1  64 00 E8 03  
+00193Br 1  10 27        
+00193Dr 1               
+00193Dr 1               ;;; ============================================================================
+00193Dr 1               ;;; XMODEM/CRC Receiver Implementation
+00193Dr 1               ;;; ============================================================================
+00193Dr 1               
+00193Dr 1                       .segment "CODE"
+00193Dr 1               
+00193Dr 1                       .include "kernal.s"
+00193Dr 2               ;;; ----------------------------------------------------------------------------
+00193Dr 2               ;;; ----------------------  C64 KERNAL routines and stubs   --------------------
+00193Dr 2               ;;; ----------------------------------------------------------------------------
+00193Dr 2               
+00193Dr 2               TERMCOL         = $01           ; cursor column on terminal
+00193Dr 2               STOPFLAG        = $91           ; flag for "STOP" key pressed
+00193Dr 2               LASTRECV        = $93           ; previous received char
+00193Dr 2               ROWLIMIT        = $9C           ; number of rows currently in buffer
+00193Dr 2               TMPBUF          = $9E           ; temporary storage
+00193Dr 2               LASTCOL         = $C8           ; last cursor column for input
+00193Dr 2               ESCFLAG         = $D0           ; ESC sequence flag (shared with CRFLAG)
+00193Dr 2               CRFLAG          = $D0           ; <>0 => there is input ready to read
+00193Dr 2               LINEPTR         = $D1           ; pointer to screen buffer for current line
+00193Dr 2               CSRCOL          = $D3           ; current cursor column
+00193Dr 2               CSRROW          = $D6           ; current cursor row
+00193Dr 2               LASTPRNT        = $D7           ; last character printed to screen
+00193Dr 2               
+00193Dr 2               
+00193Dr 2                       ;; get/set bottom-of-memory address
+00193Dr 2  90 06        KRWMEMB:BCC     WMEMB
+00193Fr 2  AE 81 02             LDX     $0281
+001942r 2  AC 82 02             LDY     $0282
+001945r 2  8E 81 02     WMEMB:  STX     $0281
+001948r 2  8C 82 02             STY     $0282
+00194Br 2  60                   RTS
+00194Cr 2               
+00194Cr 2                       ;; get/set top-of-memory address
+00194Cr 2  90 06        KRWMEMT:BCC     WMEMT
+00194Er 2  AE 83 02             LDX     $0283
+001951r 2  AC 84 02             LDY     $0284
+001954r 2  8E 83 02     WMEMT:  STX     $0283
+001957r 2  8C 84 02             STY     $0284
+00195Ar 2  60                   RTS
+00195Br 2               
+00195Br 2                       ;; set flag for kernal output messages
+00195Br 2  85 9D        KMSGFLG:STA     $9D
+00195Dr 2  60                   RTS
+00195Er 2               
+00195Er 2                       ;; stub routine for I/O functions
+00195Er 2  A9 05        KIOSTUB:LDA     #$05            ; "device not present" error
+001960r 2  38                   SEC                     ; signal error
+001961r 2  60           KSTUB:  RTS
+001962r 2               
+001962r 2                       ;; STOP (FFE1): test stop key (Z set if stop key pressed)
+001962r 2  A5 91        KSTOP:  LDA     STOPFLAG
+001964r 2  C9 7F                CMP     #$7F            ; have STOP flag?
+001966r 2  F0 10                BEQ     STOPL1          ; jump if so
+001968r 2  20 rr rr             JSR     GETIN1
+00196Br 2  F0 14                BEQ     STOPL2          ; done if nothing
+00196Dr 2  8D 77 02             STA     $0277           ; save received character
+001970r 2  E6 C6                INC     $C6
+001972r 2  A5 91                LDA     STOPFLAG
+001974r 2  C9 7F                CMP     #$7F            ; have STOP flag now?
+001976r 2  D0 0B                BNE     STOPR           ; done if not
+001978r 2  A9 FF        STOPL1: LDA     #$FF            ; clear STOP flag
+00197Ar 2  85 91                STA     STOPFLAG
+00197Cr 2  A9 7F                LDA     #$7F
+00197Er 2  C9 7F                CMP     #$7F            ; set Z flag
+001980r 2  60                   RTS
+001981r 2  A9 FF        STOPL2: LDA     #$FF            ; clear Z flag
+001983r 2  60           STOPR:  RTS
+001984r 2               
+001984r 2                       ;; GETIN (FFE4): get input character (0 if none)
+001984r 2  A5 C6        KGETIN: LDA     $C6
+001986r 2  F0 06                BEQ     GETIN1
+001988r 2  C6 C6                DEC     $C6
+00198Ar 2  AD 77 02             LDA     $0277
+00198Dr 2  60                   RTS
+00198Er 2  20 rr rr     GETIN1: JSR     UAGET           ; get char from UART, zero if none
+001991r 2  C9 00                CMP	#$00		; did we receive a character?
+001993r 2  F0 0F                BEQ     GETINR          ; if not, return with 0
+001995r 2  C9 1B                CMP     #27             ; is it ESC (stop)?
+001997r 2  F0 07                BEQ     SETSF           ; set STOP flag if so
+001999r 2  C9 03                CMP     #3              ; is it CTRL-C (stop)?
+00199Br 2  F0 03                BEQ     SETSF           ; set STOP flag if so
+00199Dr 2  4C rr rr             JMP     MAPCHR
+0019A0r 2  A9 7F        SETSF:  LDA     #$7F            ; set stop flag
+0019A2r 2  85 91                STA     STOPFLAG
+0019A4r 2  60           GETINR: RTS
+0019A5r 2               
+0019A5r 2                       ;; CHRIN (FFCF): get next input character (read until CR if none)
+0019A5r 2  8A           KCHRIN: TXA                     ; save X
+0019A6r 2  48                   PHA
+0019A7r 2  98                   TYA                     ; save Y
+0019A8r 2  48                   PHA
+0019A9r 2  A5 D0                LDA     CRFLAG          ; have we received a CR?
+0019ABr 2  D0 09                BNE     CHRIN1          ; if yes then get next char
+0019ADr 2  20 rr rr             JSR     GETLIN          ; no => get input from UART until CR
+0019B0r 2  90 17                BCC     CHRIN4          ; jump if there was no input at all
+0019B2r 2  A9 80                LDA     #$80            ; now have received CR
+0019B4r 2  85 D0                STA     CRFLAG
+0019B6r 2  A4 D3        CHRIN1: LDY     CSRCOL          ; current cursor (read) position
+0019B8r 2  C4 C8                CPY     LASTCOL         ; have we reached the end?
+0019BAr 2  B0 07                BCS     CHRIN3          ; jump if so
+0019BCr 2  B1 D1                LDA     (LINEPTR),Y     ; get next character
+0019BEr 2  E6 D3                INC     CSRCOL          ; move cursor position
+0019C0r 2  4C rr rr             JMP     CHRIN2          ; done
+0019C3r 2  A9 00        CHRIN3: LDA     #$00            ; turn off CR flag
+0019C5r 2  85 D0                STA     CRFLAG
+0019C7r 2  E6 D3                INC     CSRCOL          ; still increment CSRCOL
+0019C9r 2  A9 0D        CHRIN4: LDA     #13             ; return CR
+0019CBr 2  85 9E        CHRIN2: STA     TMPBUF
+0019CDr 2  68                   PLA                     ; restore Y
+0019CEr 2  A8                   TAY
+0019CFr 2  68                   PLA                     ; restor X
+0019D0r 2  AA                   TAX
+0019D1r 2  A5 9E                LDA     TMPBUF          ; get character back
+0019D3r 2  18                   CLC                     ; no error
+0019D4r 2  60                   RTS
+0019D5r 2               
+0019D5r 2                       ;; read UART input into line buffer up to but not including CR
+0019D5r 2                       ;; returns with carry set if there was any input
+0019D5r 2                       ;; (I flag gets set by BRK and C64 kernal clears it in CHRIN so
+0019D5r 2                       ;; we need to do that too)
+0019D5r 2  58           GETLIN: CLI
+0019D6r 2  20 rr rr             JSR     CHKCOL          ; check terminal cursor column
+0019D9r 2  A4 D3                LDY     CSRCOL
+0019DBr 2  A5 D6                LDA     CSRROW
+0019DDr 2  48                   PHA                     ; save current row
+0019DEr 2  A9 00                LDA     #0
+0019E0r 2  85 91                STA     STOPFLAG
+0019E2r 2  85 D0                STA     ESCFLAG
+0019E4r 2  20 rr rr     WTCHR:  JSR     UAGET          ; wait for character from UART
+0019E7r 2  24 D0                BIT     ESCFLAG         ; are we in an ESC sequence?
+0019E9r 2  30 6A                BMI     ESCHDL          ; go to ESC handler
+0019EBr 2  C9 1B                CMP     #27             ; is it ESC?
+0019EDr 2  F0 5C                BEQ     ESCS            ; go to ESC start handler
+0019EFr 2  C9 08                CMP     #8              ; is it backspace?
+0019F1r 2  F0 3F                BEQ     CHRBS           ; go to DELETE handler
+0019F3r 2  C9 7F                CMP     #127            ; is it delete?
+0019F5r 2  F0 3B                BEQ     CHRBS           ; go to DELETE handler
+0019F7r 2  20 rr rr             JSR     MAPCHR          ; map ASCII
+0019FAr 2  F0 E8                BEQ     WTCHR           ; ignore character if we can not map it
+0019FCr 2  C9 0D                CMP     #13             ; was character CR (or LF)?
+0019FEr 2  F0 0D                BEQ     GLDONE          ; if yes then we're done
+001A00r 2  C0 50                CPY     #NUMCOLS        ; are we at the end of the line buffer?
+001A02r 2  B0 E0                BCS     WTCHR           ; if so then ignore input
+001A04r 2  91 D1                STA     (LINEPTR),Y     ; store character
+001A06r 2  C8                   INY
+001A07r 2  20 rr rr             JSR     UAPUTW          ; output character
+001A0Ar 2  4C rr rr             JMP     WTCHR           ; wait for more input
+001A0Dr 2  A0 4F        GLDONE: LDY     #NUMCOLS-1      ; start Y at line length
+001A0Fr 2  B1 D1        GLL1:   LDA     (LINEPTR),Y     ; get character from buffer
+001A11r 2  C9 20                CMP     #' '            ; is it "space"
+001A13r 2  D0 03                BNE     GLL2            ; jump if not
+001A15r 2  88                   DEY                     ; next position
+001A16r 2  D0 F7                BNE     GLL1            ; repeat until 0
+001A18r 2  C8           GLL2:   INY                     ; Y now is first space character pos
+001A19r 2  84 C8                STY     LASTCOL         ; set column for end-of-input
+001A1Br 2  84 01                STY     TERMCOL         ; set terminal cursor column
+001A1Dr 2  68                   PLA                     ; get original cursor row back
+001A1Er 2  C5 D6                CMP     CSRROW          ; compare to current
+001A20r 2  F0 06                BEQ     GLL3            ; jump if same
+001A22r 2  A0 00                LDY     #0              ; cursor row changed
+001A24r 2  84 D3                STY     CSRCOL          ; => input start at first column
+001A26r 2  38                   SEC
+001A27r 2  60                   RTS
+001A28r 2  C4 D3        GLL3:   CPY     CSRCOL          ; do we have any non-space characters
+001A2Ar 2  F0 04                BEQ     GLRETC          ; jump if CSRCOL==TERMCOL, i.e. no input
+001A2Cr 2  B0 03                BCS     GLRET           ; after initial cursor position?
+001A2Er 2  84 D3                STY     CSRCOL          ; no => set beginning=end of input
+001A30r 2  18           GLRETC: CLC                     ; no input => clear carry
+001A31r 2  60           GLRET:  RTS
+001A32r 2               
+001A32r 2                       ;; backspace handling
+001A32r 2  C0 00        CHRBS:  CPY     #0              ; is cursor at start of line?
+001A34r 2  F0 AE                BEQ     WTCHR           ; if so then we cannot backspace any more
+001A36r 2  88                   DEY                     ; cursor one back
+001A37r 2  A9 08                LDA     #8              ; send backspace-space-backspace
+001A39r 2  20 rr rr             JSR     UAPUTW
+001A3Cr 2  A9 20                LDA     #' '
+001A3Er 2  91 D1                STA     (LINEPTR),Y     ; clear out character in line buffer
+001A40r 2  20 rr rr             JSR     UAPUTW
+001A43r 2  A9 08                LDA     #8
+001A45r 2  20 rr rr             JSR     UAPUTW
+001A48r 2  4C rr rr             JMP     WTCHR           ; wait for more input
+001A4Br 2               
+001A4Br 2                       ;; ESC (cursor) sequence handling
+001A4Br 2  A9 80        ESCS:   LDA     #$80            ; start ESC mode
+001A4Dr 2  2C                   .byte   $2C             ; skip next 2-byte instruction
+001A4Er 2  A9 00        ESCCLR: LDA     #$00            ; clear ESC flag
+001A50r 2  85 D0                STA     ESCFLAG
+001A52r 2  4C rr rr             JMP     WTCHR
+001A55r 2  24 D0        ESCHDL: BIT     ESCFLAG
+001A57r 2  70 0B                BVS     ESCL1           ; jump if we are waiting for char #3
+001A59r 2  C9 5B                CMP     #'['            ; did we receive expected second char?
+001A5Br 2  D0 F1                BNE     ESCCLR          ; if not, end ESC sequence
+001A5Dr 2  A9 C0                LDA     #$C0            ; set flag to wait for third char
+001A5Fr 2  85 D0                STA     ESCFLAG
+001A61r 2  4C rr rr             JMP     WTCHR           ; wait for next input character
+001A64r 2  C9 41        ESCL1:  CMP     #'A'            ; ESC [ A (cursor up)?
+001A66r 2  F0 0E                BEQ     ESCCU           ; jump if so
+001A68r 2  C9 42                CMP     #'B'            ; ESC [ A (cursor down)?
+001A6Ar 2  F0 18                BEQ     ESCCD           ; jump if so
+001A6Cr 2  C9 43                CMP     #'C'            ; ESC [ C (cursor right)?
+001A6Er 2  F0 35                BEQ     ESCCR           ; jump if so
+001A70r 2  C9 44                CMP     #'D'            ; ESC [ D (cursor left)?
+001A72r 2  F0 29                BEQ     ESCCL           ; jump if so
+001A74r 2  D0 D8                BNE     ESCCLR          ; end ESC sequence
+001A76r 2  A5 D6        ESCCU:  LDA     CSRROW
+001A78r 2  C5 9C                CMP     ROWLIMIT        ; is cursor in first row?
+001A7Ar 2  F0 D2                BEQ     ESCCLR          ; if so then we cannot go up any more
+001A7Cr 2  20 rr rr             JSR     ROWUP           ; move cursor pointer up one row
+001A7Fr 2  A9 41                LDA     #'A'
+001A81r 2  4C rr rr             JMP     ESCPS           ; send "cursor up" sequence
+001A84r 2  A5 D6        ESCCD:  LDA     CSRROW
+001A86r 2  C9 17                CMP     #NUMROWS-1      ; is cursor in last row?
+001A88r 2  F0 08                BEQ     ESCCD1          ; if so then we cannot go down any more
+001A8Ar 2  20 rr rr             JSR     ROWDN           ; move cursor pointer down one row
+001A8Dr 2  A9 42                LDA     #'B'
+001A8Fr 2  4C rr rr             JMP     ESCPS           ; send "cursor down" sequence
+001A92r 2  20 rr rr     ESCCD1: JSR     SCRL            ; scroll line buffer down
+001A95r 2  A9 0A                LDA     #10             ; send line feed
+001A97r 2  20 rr rr             JSR     UAPUTW
+001A9Ar 2  4C rr rr             JMP     ESCCLR          ; end ESC mode
+001A9Dr 2  C0 00        ESCCL:  CPY     #0              ; is cursor at start of line?
+001A9Fr 2  F0 AD                BEQ     ESCCLR          ; if so then we cannot go left any more
+001AA1r 2  88                   DEY                     ; move cursor pointer left
+001AA2r 2  4C rr rr             JMP     ESCPS
+001AA5r 2  C0 4F        ESCCR:  CPY     #NUMCOLS-1      ; is cursor at end of line?
+001AA7r 2  F0 A5                BEQ     ESCCLR          ; if so then we cannot go right any more
+001AA9r 2  C8                   INY                     ; move cursor pointer right
+001AAAr 2  48           ESCPS:  PHA                     ; save final character
+001AABr 2  A9 1B                LDA     #27             ; send cursor sequence back to terminal
+001AADr 2  20 rr rr             JSR     UAPUTW
+001AB0r 2  A9 5B                LDA     #'['
+001AB2r 2  20 rr rr             JSR     UAPUTW
+001AB5r 2  68                   PLA
+001AB6r 2  20 rr rr             JSR     UAPUTW
+001AB9r 2  4C rr rr             JMP     ESCCLR          ; clear ESC mode and wait for next char
+001ABCr 2               
+001ABCr 2                       ;; map input char:
+001ABCr 2                       ;; - clear bit 7 of character
+001ABCr 2                       ;; - ignore character codes < 32 (space)
+001ABCr 2                       ;; - map LF to CR, ignore LF after CR
+001ABCr 2                       ;; - return with Z bit set if invalid character
+001ABCr 2  48           MAPCHR: PHA
+001ABDr 2  A5 93                LDA     LASTRECV        ; transfer previous character
+001ABFr 2  85 9E                STA     TMPBUF          ; to TMPBUF
+001AC1r 2  68                   PLA
+001AC2r 2  85 93                STA     LASTRECV        ; rememver new character
+001AC4r 2  29 7F                AND     #$7F            ; clear bit 7
+001AC6r 2  C9 0D                CMP     #13             ; is character CR?
+001AC8r 2  F0 16                BEQ     MCICR           ; jump if so
+001ACAr 2  C9 0A                CMP     #10             ; is character NL?
+001ACCr 2  D0 08                BNE     MC1             ; jump if not
+001ACEr 2  A9 0D                LDA     #13
+001AD0r 2  C5 9E                CMP     TMPBUF          ; was previous character CR?
+001AD2r 2  F0 09                BEQ     MCINUL          ; if so then ignore NL
+001AD4r 2  D0 0A                BNE     MCICR           ; return CR
+001AD6r 2               MC1:
+001AD6r 2                       .if     INPUT_UCASE
+001AD6r 2                       CMP     #'a'
+001AD6r 2                       BCC     MC2
+001AD6r 2                       CMP     #'z'+1
+001AD6r 2                       BCS     MC2
+001AD6r 2                       AND     #$DF
+001AD6r 2               MC2:
+001AD6r 2                       .endif
+001AD6r 2  C9 20                CMP     #' '            ; character < ' '?
+001AD8r 2  90 03                BCC     MCINUL          ; skip if so
+001ADAr 2  09 00                ORA     #0              ; clear Z flag
+001ADCr 2  60                   RTS
+001ADDr 2  A9 00        MCINUL: LDA     #00
+001ADFr 2  60                   RTS
+001AE0r 2  A9 0D        MCICR:  LDA     #13
+001AE2r 2  60           MCIR:   RTS
+001AE3r 2               
+001AE3r 2                       ;; process CR output
+001AE3r 2  98           PROCCR: TYA
+001AE4r 2  48                   PHA
+001AE5r 2  8A                   TXA
+001AE6r 2  48                   PHA
+001AE7r 2  A9 0D                LDA     #13             ; output CR
+001AE9r 2  20 rr rr             JSR     UAPUTW
+001AECr 2  A9 0A                LDA     #10             ; output LF
+001AEEr 2  20 rr rr             JSR     UAPUTW
+001AF1r 2  A9 00                LDA     #0              ; beginning of line
+001AF3r 2  85 01                STA     TERMCOL         ; reset terminal cursor position
+001AF5r 2  85 D3                STA     CSRCOL          ; reset cursor pointer
+001AF7r 2  85 C8                STA     LASTCOL         ; reset last input column
+001AF9r 2  85 D0                STA     CRFLAG          ; no input waiting
+001AFBr 2  A5 D6                LDA     CSRROW
+001AFDr 2  C9 17                CMP     #NUMROWS-1      ; cursor in last row?
+001AFFr 2  D0 06                BNE     PROC1
+001B01r 2  20 rr rr             JSR     SCRL            ; scroll buffer
+001B04r 2  4C rr rr             JMP     PROC2
+001B07r 2  20 rr rr     PROC1:  JSR     ROWDN           ; move cursor one row down
+001B0Ar 2  68           PROC2:  PLA
+001B0Br 2  AA                   TAX
+001B0Cr 2  68                   PLA
+001B0Dr 2  A8                   TAY
+001B0Er 2  60                   RTS
+001B0Fr 2               
+001B0Fr 2                       ;; move cursor row (and line pointer) down
+001B0Fr 2  E6 D6        ROWDN:  INC     CSRROW
+001B11r 2  18                   CLC
+001B12r 2  A5 D1                LDA     LINEPTR
+001B14r 2  69 50                ADC     #NUMCOLS
+001B16r 2  85 D1                STA     LINEPTR
+001B18r 2  A5 D2                LDA     LINEPTR+1
+001B1Ar 2  69 00                ADC     #0
+001B1Cr 2  85 D2                STA     LINEPTR+1
+001B1Er 2  60                   RTS
+001B1Fr 2               
+001B1Fr 2                       ;; move cursor row (and line pointer) up
+001B1Fr 2  C6 D6        ROWUP:  DEC     CSRROW
+001B21r 2  38                   SEC
+001B22r 2  A5 D1                LDA     LINEPTR
+001B24r 2  E9 50                SBC     #NUMCOLS
+001B26r 2  85 D1                STA     LINEPTR
+001B28r 2  A5 D2                LDA     LINEPTR+1
+001B2Ar 2  E9 00                SBC     #0
+001B2Cr 2  85 D2                STA     LINEPTR+1
+001B2Er 2  60                   RTS
+001B2Fr 2               
+001B2Fr 2                       ;; scroll screen buffer
+001B2Fr 2  48           SCRL:   PHA
+001B30r 2  8A                   TXA
+001B31r 2  48                   PHA
+001B32r 2  98                   TYA
+001B33r 2  48                   PHA
+001B34r 2  A5 D6                LDA     CSRROW
+001B36r 2  48                   PHA
+001B37r 2  A5 D1                LDA     LINEPTR
+001B39r 2  48                   PHA
+001B3Ar 2  A5 D2                LDA     LINEPTR+1
+001B3Cr 2  48                   PHA
+001B3Dr 2  A9 00                LDA     #<LINEBUF       ; set pointer to first row
+001B3Fr 2  85 D1                STA     LINEPTR
+001B41r 2  A9 04                LDA     #>LINEBUF
+001B43r 2  85 D2                STA     LINEPTR+1
+001B45r 2  A2 17                LDX     #NUMROWS-1
+001B47r 2  A5 D1        SCRL1:  LDA     LINEPTR
+001B49r 2  85 C1                STA     $C1
+001B4Br 2  A5 D2                LDA     LINEPTR+1
+001B4Dr 2  85 C2                STA     $C2
+001B4Fr 2  20 rr rr             JSR     ROWDN           ; go one row down
+001B52r 2  A0 4F                LDY     #NUMCOLS-1      ; fill line buffer
+001B54r 2  B1 D1        SCRL2:  LDA     (LINEPTR),Y     ; move character
+001B56r 2  91 C1                STA     ($C1),Y         ; one row up
+001B58r 2  88                   DEY
+001B59r 2  10 F9                BPL     SCRL2           ; repeat for all columns
+001B5Br 2  CA                   DEX
+001B5Cr 2  D0 E9                BNE     SCRL1
+001B5Er 2  20 rr rr             JSR     CLRL            ; clear bottom row
+001B61r 2  A5 9C                LDA     ROWLIMIT
+001B63r 2  F0 02                BEQ     SCRL3
+001B65r 2  C6 9C                DEC     ROWLIMIT
+001B67r 2  68           SCRL3:  PLA
+001B68r 2  85 D2                STA     LINEPTR+1
+001B6Ar 2  68                   PLA
+001B6Br 2  85 D1                STA     LINEPTR
+001B6Dr 2  68                   PLA
+001B6Er 2  85 D6                STA     CSRROW
+001B70r 2  68                   PLA
+001B71r 2  A8                   TAY
+001B72r 2  68                   PLA
+001B73r 2  AA                   TAX
+001B74r 2  68                   PLA
+001B75r 2  60                   RTS
+001B76r 2               
+001B76r 2                       ;; clear current row
+001B76r 2  A0 4F        CLRL:   LDY     #NUMCOLS-1      ; fill line buffer
+001B78r 2  A9 20                LDA     #' '            ; with SPACE
+001B7Ar 2  91 D1        CLRL1:  STA     (LINEPTR),Y
+001B7Cr 2  88                   DEY
+001B7Dr 2  10 FB                BPL     CLRL1           ; repeat for all columns
+001B7Fr 2  60                   RTS
+001B80r 2               
+001B80r 2                       ;; clear line buffer
+001B80r 2  A9 00        CLRLB:  LDA     #<LINEBUF       ; set pointer to first row
+001B82r 2  85 D1                STA     LINEPTR
+001B84r 2  A9 04                LDA     #>LINEBUF
+001B86r 2  85 D2                STA     LINEPTR+1
+001B88r 2  A9 00                LDA     #0
+001B8Ar 2  85 D6                STA     CSRROW
+001B8Cr 2  A2 18                LDX     #NUMROWS
+001B8Er 2  20 rr rr     CLRLB1: JSR     CLRL            ; clear row
+001B91r 2  20 rr rr             JSR     ROWDN           ; next row
+001B94r 2  CA                   DEX
+001B95r 2  D0 F7                BNE     CLRLB1          ; repeat for all rows
+001B97r 2  20 rr rr             JSR     ROWUP           ; gone one too far
+001B9Ar 2  60                   RTS
+001B9Br 2               
+001B9Br 2                       ;; CHROUT (FFD2): write output character
+001B9Br 2  85 D7        KCHROUT:STA     LASTPRNT
+001B9Dr 2  98                   TYA
+001B9Er 2  48                   PHA
+001B9Fr 2  A5 D7                LDA     LASTPRNT
+001BA1r 2  C9 0D                CMP     #13             ; was it CR?
+001BA3r 2  D0 09                BNE     CHROL3          ; jump if not
+001BA5r 2  20 rr rr             JSR     PREOL           ; print characters in line buffer after cursor
+001BA8r 2  20 rr rr             JSR     PROCCR          ; print CR/LF and clear line buffer
+001BABr 2  4C rr rr             JMP     CHRODN          ; done
+001BAEr 2               CHROL3:
+001BAEr 2                       .if     SUPPRESS_NP
+001BAEr 2                       CMP     #$80            ; ignore
+001BAEr 2                       BCS     CHRODN          ; non-printable
+001BAEr 2                       CMP     #$20            ; characters
+001BAEr 2                       BCC     CHRODN
+001BAEr 2                       .endif
+001BAEr 2  20 rr rr             JSR     CHKCOL
+001BB1r 2                       ;; output character
+001BB1r 2  A5 D7                LDA     LASTPRNT
+001BB3r 2  20 rr rr             JSR     UAPUTW          ; output character
+001BB6r 2  A4 D3                LDY     CSRCOL
+001BB8r 2  91 D1                STA     (LINEPTR),Y     ; write output character to line buffer
+001BBAr 2  C8                   INY
+001BBBr 2  84 D3                STY     CSRCOL
+001BBDr 2  84 01                STY     TERMCOL         ; remember previous column
+001BBFr 2  A9 00                LDA     #0              ; outputting character stops...
+001BC1r 2  85 D0                STA     CRFLAG          ; ...input sequence (CRFLAG=0)
+001BC3r 2  C0 50                CPY     #NUMCOLS        ; are we at the end of the line buffer?
+001BC5r 2  90 03                BCC     CHRODN          ; jump if not
+001BC7r 2  20 rr rr             JSR     PROCCR          ; go to next line
+001BCAr 2  68           CHRODN: PLA                     ; restore Y
+001BCBr 2  A8                   TAY
+001BCCr 2  A5 D7                LDA     LASTPRNT        ; get printed character back
+001BCEr 2  18                   CLC                     ; no error
+001BCFr 2  60                   RTS
+001BD0r 2               
+001BD0r 2                       ;; make sure terminal cursor position agrees with CSRCOL
+001BD0r 2  A4 D3        CHKCOL: LDY     CSRCOL
+001BD2r 2  C4 01                CPY     TERMCOL
+001BD4r 2  B0 14                BCS     CHROL5          ; jump if CSRCOL>=TERMCOL
+001BD6r 2                       ;; cursor has moved back => output CR followed by
+001BD6r 2                       ;; all characters from the line buffer up to new cursor pos
+001BD6r 2  A9 0D                LDA     #13             ; output CR
+001BD8r 2  20 rr rr             JSR     UAPUTW
+001BDBr 2  A0 00                LDY     #0
+001BDDr 2  C4 D3        CHROL4: CPY     CSRCOL
+001BDFr 2  F0 09                BEQ     CHROL5
+001BE1r 2  B1 D1                LDA     (LINEPTR),Y
+001BE3r 2  20 rr rr             JSR     UAPUTW
+001BE6r 2  C8                   INY
+001BE7r 2  4C rr rr             JMP     CHROL4
+001BEAr 2  F0 0A        CHROL5: BEQ     CHROL7          ; jump if CSRCOL==TERMCOL
+001BECr 2                       ;; cursor has moved forward => output line buffer up to new position
+001BECr 2  B1 D1        CHROL6: LDA     (LINEPTR),Y
+001BEEr 2  20 rr rr             JSR     UAPUTW
+001BF1r 2  88                   DEY
+001BF2r 2  C4 01                CPY     TERMCOL
+001BF4r 2  D0 F6                BNE     CHROL6
+001BF6r 2  84 01        CHROL7: STY     TERMCOL
+001BF8r 2  60                   RTS
+001BF9r 2               
+001BF9r 2                       ;; re-print the current line
+001BF9r 2  A9 0D        PRLINE: LDA     #13             ; print CR
+001BFBr 2  20 rr rr             JSR     UAPUTW          ; (move terminal cursor to beginning of line)
+001BFEr 2  A9 00                LDA     #0              ; set terminal cursor position to 0
+001C00r 2  85 01                STA     TERMCOL         ; fall through to print line buffer
+001C02r 2               
+001C02r 2                       ;; print characters in line buffer after terminal cursor position
+001C02r 2  A0 4F        PREOL:  LDY     #NUMCOLS-1      ; start at end of line buffer
+001C04r 2  C4 01        PREOL0: CPY     TERMCOL         ; have we reached the cursor column yet?
+001C06r 2  F0 1B                BEQ     PREOL2          ; jump if Y<=TERMCOL
+001C08r 2  90 19                BCC     PREOL2
+001C0Ar 2  B1 D1                LDA     (LINEPTR),Y     ; get character
+001C0Cr 2  88                   DEY
+001C0Dr 2  C9 20                CMP     #$20            ; is it SPACE?
+001C0Fr 2  F0 F3                BEQ     PREOL0          ; repeat if so
+001C11r 2  C8                   INY                     ; remember one more than last
+001C12r 2  84 9E                STY     TMPBUF          ; non-space column after cursor
+001C14r 2  A4 01                LDY     TERMCOL
+001C16r 2  88                   DEY
+001C17r 2  C8           PREOL1: INY
+001C18r 2  B1 D1                LDA     (LINEPTR),Y     ; get character
+001C1Ar 2                       .if     SUPPRESS_NP
+001C1Ar 2                       CMP     #$80            ; ignore
+001C1Ar 2                       BCS     PREOL3          ; non-printable
+001C1Ar 2                       CMP     #$20            ; characters
+001C1Ar 2                       BCS     PREOL4
+001C1Ar 2               PREOL3: LDA     #$20
+001C1Ar 2               PREOL4: .endif
+001C1Ar 2  20 rr rr             JSR     UAPUTW          ; output character
+001C1Dr 2  C4 9E                CPY     TMPBUF
+001C1Fr 2  D0 F6                BNE     PREOL1
+001C21r 2  84 01                STY     TERMCOL         ; set new cursor position
+001C23r 2  60           PREOL2: RTS
+001C24r 2               
+001C24r 2                       ;; NMI handler
+001C24r 2  78           NMI:    SEI
+001C25r 2  6C 18 03             JMP     ($0318)         ; jump to NMI vector
+001C28r 2               
+001C28r 2                       ;; IRQ and BRK handler
+001C28r 2  48           IRQ:    PHA
+001C29r 2  8A                   TXA
+001C2Ar 2  48                   PHA
+001C2Br 2  98                   TYA
+001C2Cr 2  48                   PHA
+001C2Dr 2  BA                   TSX
+001C2Er 2  BD 04 01             LDA     $0104,X         ; get status byte from stack
+001C31r 2  29 10                AND     #$10            ; "B" (BRK) flag set
+001C33r 2  F0 03                BEQ     BRK_LABEL       ; jump if not
+001C35r 2  6C 16 03             JMP     ($0316)         ; jump to BREAK vector
+001C38r 2               BRK_LABEL:
+001C38r 2  6C 14 03             JMP     ($0314)         ; jump to IRQ vector
+001C3Br 2               
+001C3Br 2                       ;; interrupt stub function
+001C3Br 2  40           ISTUB:  RTI
+001C3Cr 2               
+001C3Cr 2                       ;; RESET handler
+001C3Cr 2  78           RESET:  SEI                     ; prevent IRQ interrupts
+001C3Dr 2  D8                   CLD                     ; clear decimal mode flag
+001C3Er 2  A2 FF                LDX     #$FF            ; initialize stack pointer
+001C40r 2  9A                   TXS
+001C41r 2  A9 rr                LDA     #<ISTUB         ; initialize interrupt vectors
+001C43r 2  8D 14 03             STA     $0314
+001C46r 2  8D 16 03             STA     $0316
+001C49r 2  8D 18 03             STA     $0318
+001C4Cr 2  A9 rr                LDA     #>ISTUB
+001C4Er 2  8D 15 03             STA     $0315
+001C51r 2  8D 17 03             STA     $0317
+001C54r 2  8D 19 03             STA     $0319
+001C57r 2  20 rr rr             JSR     UAINIT          ; init UART
+001C5Ar 2  A9 00                LDA     #0
+001C5Cr 2  85 D7                STA     LASTPRNT
+001C5Er 2  85 93                STA     LASTRECV
+001C60r 2  85 D3                STA     CSRCOL
+001C62r 2  A9 17                LDA     #NUMROWS-1
+001C64r 2  85 D6                STA     CSRROW
+001C66r 2  85 9C                STA     ROWLIMIT
+001C68r 2  A9 FF                LDA     #$FF            ; clear stop flag
+001C6Ar 2  85 91                STA     STOPFLAG
+001C6Cr 2  20 rr rr             JSR     CLRLB           ; clear line buffer
+001C6Fr 2  20 rr rr             JSR     PROCCR          ; set cursor to start of line
+001C72r 2  4C rr rr             JMP     ENTRY
+001C75r 2               
+001C75r 2               ;;; ----------------------------------------------------------------------------
+001C75r 2               ;;; ---------------------- UART communication functions  -----------------------
+001C75r 2               ;;; ----------------------------------------------------------------------------
+001C75r 2               
+001C75r 2                .if (UART_TYPE = 6522)
+001C75r 2                  .include "uart_6522.s"
+001C75r 2                .elseif (UART_TYPE = 6551)
+001C75r 2                  .include "uart_6551.s"
+001C75r 3               ; ----------------- assembly instructions ----------------------------
+001C75r 3               ;
+001C75r 3               ; this is a subroutine library only
+001C75r 3               ; it must be included in an executable source file
+001C75r 3               ;
+001C75r 3               ; Modified: 2025-11-30 by kayto@github.com for AT65C02
+001C75r 3               ; - Changed UAGET to truly non-blocking (returns 0 if no character)
+001C75r 3               ; - Added separate LAB_WAIT_Rx blocking routine
+001C75r 3               ;
+001C75r 3               ;*** I/O Locations *******************************
+001C75r 3               ; define the i/o address of the ACIA1 chip
+001C75r 3               ;*** 6551 CIA ************************
+001C75r 3               ; set the 6551 register addresses
+001C75r 3               
+001C75r 3               ACIA_RX         = $8400     ; ACIA receive data port
+001C75r 3               ACIA_TX         = $8400     ; ACIA transmit data port
+001C75r 3               ACIA_STATUS     = $8401     ; ACIA status port
+001C75r 3               ACIA_RESET      = $8401     ; ACIA reset port
+001C75r 3               ACIA_COMMAND    = $8402     ; ACIA command port
+001C75r 3               ACIA_CONTROL    = $8403	    ; ACIA control port
+001C75r 3               ;***********************************************************************
+001C75r 3               ; initialise 6551 ACIA
+001C75r 3               UAINIT:
+001C75r 3  8D 01 84     	STA	ACIA_RESET		    ; soft reset (value not important)
+001C78r 3  A9 0B        	LDA	#$0B		        ; set specific modes and functions
+001C7Ar 3               				            ; no parity, no echo, no Tx interrupt
+001C7Ar 3               				            ; no Rx interrupt, enable Tx/Rx
+001C7Ar 3  8D 02 84     	STA	ACIA_COMMAND		; save to command register
+001C7Dr 3               				            ; all the following 8-N-1 with the baud rate
+001C7Dr 3               				            ; generator selected. uncomment the line with
+001C7Dr 3               				            ; the required baud rate.
+001C7Dr 3               ;	LDA	#$1A		        ; 8-N-1, 2400 baud
+001C7Dr 3               ;	LDA	#$1C		        ; 8-N-1, 4800 baud
+001C7Dr 3               ;	LDA	#$1E		        ; 8-N-1, 9600 baud
+001C7Dr 3  A9 1F        	LDA	#$1F		        ; 8-N-1, 19200 baud
+001C7Fr 3  8D 03 84     	STA	ACIA_CONTROL		; set control register
+001C82r 3  60               RTS
+001C83r 3               ;
+001C83r 3               ;***********************************************************************
+001C83r 3               ; 6551 I/O Support Routines
+001C83r 3               ;
+001C83r 3               ; wait for ACIA and Tx byte
+001C83r 3               UAPUTW:
+001C83r 3  48           	PHA			; save A
+001C84r 3               LAB_WAIT_Tx:
+001C84r 3  AD 01 84     	LDA	ACIA_STATUS		; get status byte
+001C87r 3  29 10        	AND	#$10		; mask transmit buffer status flag (6551 TDRE = bit 4)
+001C89r 3  F0 F9        	BEQ	LAB_WAIT_Tx	; loop if tx buffer full
+001C8Br 3  68           	PLA			    ; restore A
+001C8Cr 3  8D 00 84     	STA	ACIA_TX		; save byte to ACIA data port
+001C8Fr 3  60               RTS
+001C90r 3               ;
+001C90r 3               ; non-waiting get character routine
+001C90r 3               ; Returns: A = character if available, 0 if no character
+001C90r 3               ;
+001C90r 3               UAGET:
+001C90r 3  AD 01 84     	LDA	ACIA_STATUS		; get ACIA status
+001C93r 3  29 08        	AND	#$08		; mask rx buffer status flag (6551 RDRF = bit 3)
+001C95r 3  F0 04        	BEQ	UAGET_NONE	; return 0 if rx buffer empty
+001C97r 3  AD 00 84     	LDA	ACIA_RX		; get byte from ACIA data port
+001C9Ar 3  60               RTS
+001C9Br 3               UAGET_NONE:
+001C9Br 3  A9 00        	LDA #$00		; no character available
+001C9Dr 3  60           	RTS
+001C9Er 3               
+001C9Er 3               ; blocking get character routine (wait for ACIA and Rx byte)
+001C9Er 3               LAB_WAIT_Rx:
+001C9Er 3  AD 01 84     	LDA	ACIA_STATUS		; get ACIA status
+001CA1r 3  29 08        	AND	#$08		; mask rx buffer status flag (6551 RDRF = bit 3)
+001CA3r 3  F0 F9        	BEQ	LAB_WAIT_Rx	; loop if rx buffer empty
+001CA5r 3  AD 00 84     	LDA	ACIA_RX		; get byte from ACIA data port
+001CA8r 3  60               RTS
+001CA9r 3               
+001CA9r 2                .elseif (UART_TYPE = 6850)
+001CA9r 2                  .include "uart_6850.s"
+001CA9r 2                .else
+001CA9r 2                  .error "invalid UART_TYPE"
+001CA9r 2                .endif
+001CA9r 2               
+001CA9r 2               ;;; ----------------------------------------------------------------------------
+001CA9r 2               ;;; -------------------------  C64 kernal jump table  --------------------------
+001CA9r 2               ;;; ----------------------------------------------------------------------------
+001CA9r 2               
+001CA9r 2                       .segment "JUMPTABLE"
+000000r 2  4C rr rr             JMP     KSTUB           ; FF81:
+000003r 2  4C rr rr             JMP     KSTUB           ; FF84:
+000006r 2  4C rr rr             JMP     KSTUB           ; FF87:
+000009r 2  4C rr rr             JMP     KSTUB           ; FF8A:
+00000Cr 2  4C rr rr             JMP     KSTUB           ; FF8D:
+00000Fr 2  4C rr rr             JMP     KMSGFLG         ; FF90: set kernal message output flag
+000012r 2  4C rr rr             JMP     KSTUB           ; FF93:
+000015r 2  4C rr rr             JMP     KSTUB           ; FF96:
+000018r 2  4C rr rr             JMP     KRWMEMT         ; FF99: get or set memory top address
+00001Br 2  4C rr rr             JMP     KRWMEMB         ; FF9C: get or set memory bottom address
+00001Er 2  4C rr rr             JMP     KSTUB           ; FF9F:
+000021r 2  4C rr rr             JMP     KSTUB           ; FFA2:
+000024r 2  4C rr rr             JMP     KSTUB           ; FFA5:
+000027r 2  4C rr rr             JMP     KSTUB           ; FFA8:
+00002Ar 2  4C rr rr             JMP     KSTUB           ; FFAB:
+00002Dr 2  4C rr rr             JMP     KSTUB           ; FFAE:
+000030r 2  4C rr rr             JMP     KSTUB           ; FFB1:
+000033r 2  4C rr rr             JMP     KSTUB           ; FFB4:
+000036r 2  4C rr rr             JMP     KIOSTUB         ; FFB7: read I/O status word
+000039r 2  4C rr rr             JMP     KIOSTUB         ; FFBA: set logical, first and second address
+00003Cr 2  4C rr rr             JMP     KIOSTUB         ; FFBD: set file name
+00003Fr 2  4C rr rr             JMP     KIOSTUB         ; FFC0: open loical file
+000042r 2  4C rr rr             JMP     KIOSTUB         ; FFC3: close logical file
+000045r 2  4C rr rr             JMP     KIOSTUB         ; FFC6: open channel for input
+000048r 2  4C rr rr             JMP     KIOSTUB         ; FFC9: open channel for output
+00004Br 2  4C rr rr             JMP     KIOSTUB         ; FFCC: close channels
+00004Er 2  4C rr rr             JMP     KCHRIN          ; FFCF: get input character
+000051r 2  4C rr rr             JMP     KCHROUT         ; FFD2: print output character
+000054r 2  4C rr rr             JMP     KIOSTUB         ; FFD5: load data from device
+000057r 2  4C rr rr             JMP     KIOSTUB         ; FFD8: save data to device
+00005Ar 2  4C rr rr             JMP     KSTUB           ; FFDB: set the real time clock
+00005Dr 2  4C rr rr             JMP     KSTUB           ; FFDB: get the real time clock
+000060r 2  4C rr rr             JMP     KSTOP           ; FFE1: check stop key
+000063r 2  4C rr rr             JMP     KGETIN          ; FFE4: get character from keyboard
+000066r 2  4C rr rr             JMP     KIOSTUB         ; FFE7: close all channels
+000069r 2  4C rr rr             JMP     KSTUB           ; FFEA:
+00006Cr 2  4C rr rr             JMP     KSTUB           ; FFED:
+00006Fr 2  4C rr rr             JMP     KSTUB           ; FFF0:
+000072r 2  4C rr rr             JMP     KSTUB           ; FFF3:
+000075r 2               
+000075r 2               ;;; ----------------------------------------------------------------------------
+000075r 2               ;;; -------------------------  6502 hardware vectors   -------------------------
+000075r 2               ;;; ----------------------------------------------------------------------------
+000075r 2               
+000075r 2                       .segment "VECTORS"
+000000r 2  rr rr                .word   NMI             ; hardware NMI vector
+000002r 2  rr rr                .word   RESET           ; hardware RESET vector
+000004r 2  rr rr                .word   IRQ             ; hardware IRQ/BRK vector
+000006r 2               
+000006r 2               ;;; Export UART functions for XMODEM use
+000006r 2                       .export UAINIT, UAGET, UAPUTW, LAB_WAIT_Rx
+000006r 2               
+000006r 1               
+000006r 1               
+000006r 1               
+000006r 1               
+000006r 1               

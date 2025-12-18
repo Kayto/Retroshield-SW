@@ -1,0 +1,1260 @@
+ca65 V2.19 - Git 62da869e4
+Main file   : foldtest.s
+Current file: foldtest.s
+
+000000r 1               ; Folding & Optimization Stress Test for 65C02
+000000r 1               ; Tests CPU with intensive computational patterns
+000000r 1               ; Includes: XOR folding, checksums, Fibonacci, factorial, bit manipulation
+000000r 1               ; Uses SMON Kernal-style I/O
+000000r 1               
+000000r 1               .setcpu "65C02"
+000000r 1               
+000000r 1               ; SMON Kernal I/O vectors
+000000r 1               CHROUT = $FFD2          ; Character output
+000000r 1               
+000000r 1               ; Constants
+000000r 1               DATA_SIZE = 128         ; Size of test data buffer
+000000r 1               FIB_COUNT = 24          ; Fibonacci numbers to generate (24 fits in 16-bit)
+000000r 1               FACT_MAX  = 8           ; Max factorial (8! = 40320, fits 16-bit)
+000000r 1               FOLD_ITERATIONS = 255   ; XOR fold iterations (max 8-bit)
+000000r 1               PRIME_LIMIT = 200       ; Check primes up to this
+000000r 1               
+000000r 1               ; Zero page variables
+000000r 1               .segment "ZEROPAGE"
+000000r 1  xx xx        ptr:        .res 2      ; General pointer
+000002r 1  xx xx        temp:       .res 2      ; Temp storage
+000004r 1  xx xx        temp2:      .res 2      ; Second temp
+000006r 1  xx xx        accum:      .res 2      ; 16-bit accumulator
+000008r 1  xx xx        result:     .res 2      ; Result storage
+00000Ar 1  xx xx        checksum:   .res 2      ; Running checksum
+00000Cr 1  xx xx        fold_val:   .res 2      ; Folding value
+00000Er 1  xx xx        fib_n1:     .res 2      ; Fibonacci n-1
+000010r 1  xx xx        fib_n2:     .res 2      ; Fibonacci n-2
+000012r 1  xx           counter:    .res 1      ; Loop counter
+000013r 1  xx           counter2:   .res 1      ; Second counter
+000014r 1  xx           pass_num:   .res 1      ; Current pass number
+000015r 1  xx xx        str_ptr:    .res 2      ; String pointer
+000017r 1  xx           prime_cnt:  .res 1      ; Prime counter
+000018r 1  xx           divisor:    .res 1      ; For division
+000019r 1  xx xx        dividend:   .res 2      ; For division
+00001Br 1  xx xx        crc:        .res 2      ; CRC value
+00001Dr 1  xx xx        gcd_a:      .res 2      ; GCD operand A
+00001Fr 1  xx xx        gcd_b:      .res 2      ; GCD operand B
+000021r 1               
+000021r 1               .segment "BSS"
+000000r 1  xx xx xx xx  data_buf:   .res DATA_SIZE   ; Test data buffer at $0200
+000004r 1  xx xx xx xx  
+000008r 1  xx xx xx xx  
+000080r 1  xx xx xx xx  fib_table:  .res 48          ; Fibonacci table (24 x 2 bytes)
+000084r 1  xx xx xx xx  
+000088r 1  xx xx xx xx  
+0000B0r 1  xx xx xx xx  results:    .res 16          ; Store test results
+0000B4r 1  xx xx xx xx  
+0000B8r 1  xx xx xx xx  
+0000C0r 1  xx xx xx xx  sort_buf:   .res 128         ; Sorting buffer (doubled)
+0000C4r 1  xx xx xx xx  
+0000C8r 1  xx xx xx xx  
+000140r 1               
+000140r 1               .segment "CODE"
+000000r 1               
+000000r 1               .proc main
+000000r 1                       ; Print banner
+000000r 1  A9 rr                lda #<banner
+000002r 1  85 rr                sta str_ptr
+000004r 1  A9 rr                lda #>banner
+000006r 1  85 rr                sta str_ptr+1
+000008r 1  20 rr rr             jsr print_string
+00000Br 1               
+00000Br 1                       ; Initialize pass counter
+00000Br 1  A9 01                lda #1
+00000Dr 1  85 rr                sta pass_num
+00000Fr 1               
+00000Fr 1                       ; ========================================
+00000Fr 1                       ; TEST 1: Data Initialization & Checksum
+00000Fr 1                       ; ========================================
+00000Fr 1  A9 rr                lda #<test1_msg
+000011r 1  85 rr                sta str_ptr
+000013r 1  A9 rr                lda #>test1_msg
+000015r 1  85 rr                sta str_ptr+1
+000017r 1  20 rr rr             jsr print_string
+00001Ar 1               
+00001Ar 1  20 rr rr             jsr init_data_pattern
+00001Dr 1  20 rr rr             jsr compute_checksum
+000020r 1               
+000020r 1                       ; Print checksum
+000020r 1  A9 rr                lda #<chk_msg
+000022r 1  85 rr                sta str_ptr
+000024r 1  A9 rr                lda #>chk_msg
+000026r 1  85 rr                sta str_ptr+1
+000028r 1  20 rr rr             jsr print_string
+00002Br 1  A5 rr                lda checksum+1
+00002Dr 1  20 rr rr             jsr print_hex
+000030r 1  A5 rr                lda checksum
+000032r 1  20 rr rr             jsr print_hex
+000035r 1  20 rr rr             jsr print_crlf
+000038r 1               
+000038r 1                       ; Store expected checksum
+000038r 1  A5 rr                lda checksum
+00003Ar 1  8D rr rr             sta results
+00003Dr 1  A5 rr                lda checksum+1
+00003Fr 1  8D rr rr             sta results+1
+000042r 1               
+000042r 1                       ; ========================================
+000042r 1                       ; TEST 2: XOR Folding Stress
+000042r 1                       ; ========================================
+000042r 1  A9 rr                lda #<test2_msg
+000044r 1  85 rr                sta str_ptr
+000046r 1  A9 rr                lda #>test2_msg
+000048r 1  85 rr                sta str_ptr+1
+00004Ar 1  20 rr rr             jsr print_string
+00004Dr 1               
+00004Dr 1  20 rr rr             jsr xor_fold_test
+000050r 1               
+000050r 1  A9 rr                lda #<fold_msg
+000052r 1  85 rr                sta str_ptr
+000054r 1  A9 rr                lda #>fold_msg
+000056r 1  85 rr                sta str_ptr+1
+000058r 1  20 rr rr             jsr print_string
+00005Br 1  A5 rr                lda fold_val+1
+00005Dr 1  20 rr rr             jsr print_hex
+000060r 1  A5 rr                lda fold_val
+000062r 1  20 rr rr             jsr print_hex
+000065r 1  20 rr rr             jsr print_crlf
+000068r 1               
+000068r 1                       ; ========================================
+000068r 1                       ; TEST 3: Fibonacci Sequence
+000068r 1                       ; ========================================
+000068r 1  A9 rr                lda #<test3_msg
+00006Ar 1  85 rr                sta str_ptr
+00006Cr 1  A9 rr                lda #>test3_msg
+00006Er 1  85 rr                sta str_ptr+1
+000070r 1  20 rr rr             jsr print_string
+000073r 1               
+000073r 1  20 rr rr             jsr generate_fibonacci
+000076r 1               
+000076r 1                       ; Print last Fibonacci number (F24 = 46368)
+000076r 1  A9 rr                lda #<fib_msg
+000078r 1  85 rr                sta str_ptr
+00007Ar 1  A9 rr                lda #>fib_msg
+00007Cr 1  85 rr                sta str_ptr+1
+00007Er 1  20 rr rr             jsr print_string
+000081r 1               
+000081r 1                       ; Get F24 from table
+000081r 1  AD rr rr             lda fib_table+46    ; F24 low
+000084r 1  85 rr                sta temp
+000086r 1  AD rr rr             lda fib_table+47    ; F24 high
+000089r 1  85 rr                sta temp+1
+00008Br 1  A5 rr                lda temp+1
+00008Dr 1  20 rr rr             jsr print_hex
+000090r 1  A5 rr                lda temp
+000092r 1  20 rr rr             jsr print_hex
+000095r 1  20 rr rr             jsr print_crlf
+000098r 1               
+000098r 1                       ; Verify F24 = $B520 (46368 decimal)
+000098r 1  A5 rr                lda temp
+00009Ar 1  C9 20                cmp #$20
+00009Cr 1  D0 0B                bne @fib_fail
+00009Er 1  A5 rr                lda temp+1
+0000A0r 1  C9 B5                cmp #$B5
+0000A2r 1  D0 05                bne @fib_fail
+0000A4r 1  A9 rr                lda #<pass_msg
+0000A6r 1  4C rr rr             jmp @fib_done
+0000A9r 1               @fib_fail:
+0000A9r 1  A9 rr                lda #<fail_msg
+0000ABr 1               @fib_done:
+0000ABr 1  85 rr                sta str_ptr
+0000ADr 1  A9 rr                lda #>pass_msg      ; Same page for both
+0000AFr 1  85 rr                sta str_ptr+1
+0000B1r 1  20 rr rr             jsr print_string
+0000B4r 1               
+0000B4r 1                       ; ========================================
+0000B4r 1                       ; TEST 4: Factorial Chain
+0000B4r 1                       ; ========================================
+0000B4r 1  A9 rr                lda #<test4_msg
+0000B6r 1  85 rr                sta str_ptr
+0000B8r 1  A9 rr                lda #>test4_msg
+0000BAr 1  85 rr                sta str_ptr+1
+0000BCr 1  20 rr rr             jsr print_string
+0000BFr 1               
+0000BFr 1  20 rr rr             jsr factorial_chain
+0000C2r 1               
+0000C2r 1                       ; Print 8! result
+0000C2r 1  A9 rr                lda #<fact_msg
+0000C4r 1  85 rr                sta str_ptr
+0000C6r 1  A9 rr                lda #>fact_msg
+0000C8r 1  85 rr                sta str_ptr+1
+0000CAr 1  20 rr rr             jsr print_string
+0000CDr 1  A5 rr                lda result+1
+0000CFr 1  20 rr rr             jsr print_hex
+0000D2r 1  A5 rr                lda result
+0000D4r 1  20 rr rr             jsr print_hex
+0000D7r 1  20 rr rr             jsr print_crlf
+0000DAr 1               
+0000DAr 1                       ; Verify 8! = $9D80 (40320 decimal)
+0000DAr 1  A5 rr                lda result
+0000DCr 1  C9 80                cmp #$80
+0000DEr 1  D0 0B                bne @fact_fail
+0000E0r 1  A5 rr                lda result+1
+0000E2r 1  C9 9D                cmp #$9D
+0000E4r 1  D0 05                bne @fact_fail
+0000E6r 1  A9 rr                lda #<pass_msg
+0000E8r 1  4C rr rr             jmp @fact_done
+0000EBr 1               @fact_fail:
+0000EBr 1  A9 rr                lda #<fail_msg
+0000EDr 1               @fact_done:
+0000EDr 1  85 rr                sta str_ptr
+0000EFr 1  A9 rr                lda #>pass_msg
+0000F1r 1  85 rr                sta str_ptr+1
+0000F3r 1  20 rr rr             jsr print_string
+0000F6r 1               
+0000F6r 1                       ; ========================================
+0000F6r 1                       ; TEST 5: Bit Manipulation Cascade
+0000F6r 1                       ; ========================================
+0000F6r 1  A9 rr                lda #<test5_msg
+0000F8r 1  85 rr                sta str_ptr
+0000FAr 1  A9 rr                lda #>test5_msg
+0000FCr 1  85 rr                sta str_ptr+1
+0000FEr 1  20 rr rr             jsr print_string
+000101r 1               
+000101r 1  20 rr rr             jsr bit_cascade
+000104r 1               
+000104r 1  A9 rr                lda #<bits_msg
+000106r 1  85 rr                sta str_ptr
+000108r 1  A9 rr                lda #>bits_msg
+00010Ar 1  85 rr                sta str_ptr+1
+00010Cr 1  20 rr rr             jsr print_string
+00010Fr 1  A5 rr                lda result+1
+000111r 1  20 rr rr             jsr print_hex
+000114r 1  A5 rr                lda result
+000116r 1  20 rr rr             jsr print_hex
+000119r 1  20 rr rr             jsr print_crlf
+00011Cr 1               
+00011Cr 1                       ; ========================================
+00011Cr 1                       ; TEST 6: Memory Pattern Verify
+00011Cr 1                       ; ========================================
+00011Cr 1  A9 rr                lda #<test6_msg
+00011Er 1  85 rr                sta str_ptr
+000120r 1  A9 rr                lda #>test6_msg
+000122r 1  85 rr                sta str_ptr+1
+000124r 1  20 rr rr             jsr print_string
+000127r 1               
+000127r 1  20 rr rr             jsr verify_checksum
+00012Ar 1               
+00012Ar 1                       ; ========================================
+00012Ar 1                       ; TEST 7: Intensive Loop Stress
+00012Ar 1                       ; ========================================
+00012Ar 1  A9 rr                lda #<test7_msg
+00012Cr 1  85 rr                sta str_ptr
+00012Er 1  A9 rr                lda #>test7_msg
+000130r 1  85 rr                sta str_ptr+1
+000132r 1  20 rr rr             jsr print_string
+000135r 1               
+000135r 1  20 rr rr             jsr loop_stress
+000138r 1               
+000138r 1  A9 rr                lda #<loop_msg
+00013Ar 1  85 rr                sta str_ptr
+00013Cr 1  A9 rr                lda #>loop_msg
+00013Er 1  85 rr                sta str_ptr+1
+000140r 1  20 rr rr             jsr print_string
+000143r 1  A5 rr                lda accum+1
+000145r 1  20 rr rr             jsr print_hex
+000148r 1  A5 rr                lda accum
+00014Ar 1  20 rr rr             jsr print_hex
+00014Dr 1  20 rr rr             jsr print_crlf
+000150r 1               
+000150r 1                       ; ========================================
+000150r 1                       ; TEST 8: Prime Counting
+000150r 1                       ; ========================================
+000150r 1  A9 rr                lda #<test8_msg
+000152r 1  85 rr                sta str_ptr
+000154r 1  A9 rr                lda #>test8_msg
+000156r 1  85 rr                sta str_ptr+1
+000158r 1  20 rr rr             jsr print_string
+00015Br 1               
+00015Br 1  20 rr rr             jsr count_primes
+00015Er 1               
+00015Er 1  A9 rr                lda #<prime_msg
+000160r 1  85 rr                sta str_ptr
+000162r 1  A9 rr                lda #>prime_msg
+000164r 1  85 rr                sta str_ptr+1
+000166r 1  20 rr rr             jsr print_string
+000169r 1  A5 rr                lda prime_cnt
+00016Br 1  20 rr rr             jsr print_hex
+00016Er 1  20 rr rr             jsr print_crlf
+000171r 1               
+000171r 1                       ; Verify: primes < 200 = 46
+000171r 1  A5 rr                lda prime_cnt
+000173r 1  C9 2E                cmp #46
+000175r 1  D0 05                bne @prime_fail
+000177r 1  A9 rr                lda #<pass_msg
+000179r 1  4C rr rr             jmp @prime_done
+00017Cr 1               @prime_fail:
+00017Cr 1  A9 rr                lda #<fail_msg
+00017Er 1               @prime_done:
+00017Er 1  85 rr                sta str_ptr
+000180r 1  A9 rr                lda #>pass_msg
+000182r 1  85 rr                sta str_ptr+1
+000184r 1  20 rr rr             jsr print_string
+000187r 1               
+000187r 1                       ; ========================================
+000187r 1                       ; TEST 9: Bubble Sort
+000187r 1                       ; ========================================
+000187r 1  A9 rr                lda #<test9_msg
+000189r 1  85 rr                sta str_ptr
+00018Br 1  A9 rr                lda #>test9_msg
+00018Dr 1  85 rr                sta str_ptr+1
+00018Fr 1  20 rr rr             jsr print_string
+000192r 1               
+000192r 1  20 rr rr             jsr bubble_sort_test
+000195r 1               
+000195r 1  A9 rr                lda #<sort_msg
+000197r 1  85 rr                sta str_ptr
+000199r 1  A9 rr                lda #>sort_msg
+00019Br 1  85 rr                sta str_ptr+1
+00019Dr 1  20 rr rr             jsr print_string
+0001A0r 1               
+0001A0r 1                       ; ========================================
+0001A0r 1                       ; TEST 10: CRC-16 Calculation
+0001A0r 1                       ; ========================================
+0001A0r 1  A9 rr                lda #<test10_msg
+0001A2r 1  85 rr                sta str_ptr
+0001A4r 1  A9 rr                lda #>test10_msg
+0001A6r 1  85 rr                sta str_ptr+1
+0001A8r 1  20 rr rr             jsr print_string
+0001ABr 1               
+0001ABr 1  20 rr rr             jsr crc16_test
+0001AEr 1               
+0001AEr 1  A9 rr                lda #<crc_msg
+0001B0r 1  85 rr                sta str_ptr
+0001B2r 1  A9 rr                lda #>crc_msg
+0001B4r 1  85 rr                sta str_ptr+1
+0001B6r 1  20 rr rr             jsr print_string
+0001B9r 1  A5 rr                lda crc+1
+0001BBr 1  20 rr rr             jsr print_hex
+0001BEr 1  A5 rr                lda crc
+0001C0r 1  20 rr rr             jsr print_hex
+0001C3r 1  20 rr rr             jsr print_crlf
+0001C6r 1               
+0001C6r 1                       ; ========================================
+0001C6r 1                       ; TEST 11: GCD Euclidean Algorithm
+0001C6r 1                       ; ========================================
+0001C6r 1  A9 rr                lda #<test11_msg
+0001C8r 1  85 rr                sta str_ptr
+0001CAr 1  A9 rr                lda #>test11_msg
+0001CCr 1  85 rr                sta str_ptr+1
+0001CEr 1  20 rr rr             jsr print_string
+0001D1r 1               
+0001D1r 1  20 rr rr             jsr gcd_test
+0001D4r 1               
+0001D4r 1  A9 rr                lda #<gcd_msg
+0001D6r 1  85 rr                sta str_ptr
+0001D8r 1  A9 rr                lda #>gcd_msg
+0001DAr 1  85 rr                sta str_ptr+1
+0001DCr 1  20 rr rr             jsr print_string
+0001DFr 1  A5 rr                lda result+1
+0001E1r 1  20 rr rr             jsr print_hex
+0001E4r 1  A5 rr                lda result
+0001E6r 1  20 rr rr             jsr print_hex
+0001E9r 1  20 rr rr             jsr print_crlf
+0001ECr 1               
+0001ECr 1                       ; GCD(252, 105) = 21 = $15
+0001ECr 1  A5 rr                lda result
+0001EEr 1  C9 15                cmp #21
+0001F0r 1  D0 09                bne @gcd_fail
+0001F2r 1  A5 rr                lda result+1
+0001F4r 1  D0 05                bne @gcd_fail
+0001F6r 1  A9 rr                lda #<pass_msg
+0001F8r 1  4C rr rr             jmp @gcd_done
+0001FBr 1               @gcd_fail:
+0001FBr 1  A9 rr                lda #<fail_msg
+0001FDr 1               @gcd_done:
+0001FDr 1  85 rr                sta str_ptr
+0001FFr 1  A9 rr                lda #>pass_msg
+000201r 1  85 rr                sta str_ptr+1
+000203r 1  20 rr rr             jsr print_string
+000206r 1               
+000206r 1                       ; ========================================
+000206r 1                       ; TEST 12: Extended Folding (256 passes)
+000206r 1                       ; ========================================
+000206r 1  A9 rr                lda #<test12_msg
+000208r 1  85 rr                sta str_ptr
+00020Ar 1  A9 rr                lda #>test12_msg
+00020Cr 1  85 rr                sta str_ptr+1
+00020Er 1  20 rr rr             jsr print_string
+000211r 1               
+000211r 1  20 rr rr             jsr extended_fold
+000214r 1               
+000214r 1  A9 rr                lda #<efold_msg
+000216r 1  85 rr                sta str_ptr
+000218r 1  A9 rr                lda #>efold_msg
+00021Ar 1  85 rr                sta str_ptr+1
+00021Cr 1  20 rr rr             jsr print_string
+00021Fr 1  A5 rr                lda fold_val+1
+000221r 1  20 rr rr             jsr print_hex
+000224r 1  A5 rr                lda fold_val
+000226r 1  20 rr rr             jsr print_hex
+000229r 1  20 rr rr             jsr print_crlf
+00022Cr 1               
+00022Cr 1                       ; ========================================
+00022Cr 1                       ; TEST 13: Power of 2 Test (2^16)
+00022Cr 1                       ; ========================================
+00022Cr 1  A9 rr                lda #<test13_msg
+00022Er 1  85 rr                sta str_ptr
+000230r 1  A9 rr                lda #>test13_msg
+000232r 1  85 rr                sta str_ptr+1
+000234r 1  20 rr rr             jsr print_string
+000237r 1               
+000237r 1  20 rr rr             jsr power_test
+00023Ar 1               
+00023Ar 1  A9 rr                lda #<pow_msg
+00023Cr 1  85 rr                sta str_ptr
+00023Er 1  A9 rr                lda #>pow_msg
+000240r 1  85 rr                sta str_ptr+1
+000242r 1  20 rr rr             jsr print_string
+000245r 1  A5 rr                lda result+1
+000247r 1  20 rr rr             jsr print_hex
+00024Ar 1  A5 rr                lda result
+00024Cr 1  20 rr rr             jsr print_hex
+00024Fr 1  20 rr rr             jsr print_crlf
+000252r 1               
+000252r 1                       ; ========================================
+000252r 1                       ; SUMMARY
+000252r 1                       ; ========================================
+000252r 1  A9 rr                lda #<done_msg
+000254r 1  85 rr                sta str_ptr
+000256r 1  A9 rr                lda #>done_msg
+000258r 1  85 rr                sta str_ptr+1
+00025Ar 1  20 rr rr             jsr print_string
+00025Dr 1               
+00025Dr 1  00                   brk             ; Return to SMON via BRK interrupt
+00025Er 1  00                   .byte 0         ; BRK signature byte
+00025Fr 1               .endproc
+00025Fr 1               
+00025Fr 1               ; Initialize data buffer with complex pattern
+00025Fr 1               .proc init_data_pattern
+00025Fr 1  A2 00                ldx #0
+000261r 1  A9 A5                lda #$A5        ; Seed value
+000263r 1               @loop:
+000263r 1  9D rr rr             sta data_buf,x
+000266r 1                       ; Complex pattern: rotate, XOR with index, add constant
+000266r 1  6A                   ror a
+000267r 1  5D rr rr             eor data_buf,x
+00026Ar 1  69 37                adc #$37
+00026Cr 1  E8                   inx
+00026Dr 1  E0 80                cpx #DATA_SIZE
+00026Fr 1  D0 F2                bne @loop
+000271r 1  60                   rts
+000272r 1               .endproc
+000272r 1               
+000272r 1               ; Compute 16-bit additive checksum of data buffer
+000272r 1               .proc compute_checksum
+000272r 1  64 rr                stz checksum
+000274r 1  64 rr                stz checksum+1
+000276r 1  A2 00                ldx #0
+000278r 1               @loop:
+000278r 1  18                   clc
+000279r 1  BD rr rr             lda data_buf,x
+00027Cr 1  65 rr                adc checksum
+00027Er 1  85 rr                sta checksum
+000280r 1  90 02                bcc @no_carry
+000282r 1  E6 rr                inc checksum+1
+000284r 1               @no_carry:
+000284r 1  E8                   inx
+000285r 1  E0 80                cpx #DATA_SIZE
+000287r 1  D0 EF                bne @loop
+000289r 1  60                   rts
+00028Ar 1               .endproc
+00028Ar 1               
+00028Ar 1               ; XOR folding stress test
+00028Ar 1               ; Repeatedly XOR fold the buffer down
+00028Ar 1               .proc xor_fold_test
+00028Ar 1  64 rr                stz fold_val
+00028Cr 1  64 rr                stz fold_val+1
+00028Er 1               
+00028Er 1  A9 FF                lda #FOLD_ITERATIONS
+000290r 1  85 rr                sta counter
+000292r 1               
+000292r 1               @outer:
+000292r 1                       ; XOR all bytes together
+000292r 1  A2 00                ldx #0
+000294r 1  A9 00                lda #0
+000296r 1               @inner:
+000296r 1  5D rr rr             eor data_buf,x
+000299r 1  E8                   inx
+00029Ar 1  E0 80                cpx #DATA_SIZE
+00029Cr 1  D0 F8                bne @inner
+00029Er 1               
+00029Er 1                       ; Rotate and accumulate into fold_val
+00029Er 1  6A                   ror a
+00029Fr 1  45 rr                eor fold_val
+0002A1r 1  85 rr                sta fold_val
+0002A3r 1               
+0002A3r 1                       ; Rotate fold_val+1 with carry
+0002A3r 1  26 rr                rol fold_val+1
+0002A5r 1               
+0002A5r 1                       ; Modify buffer for next iteration
+0002A5r 1  A2 00                ldx #0
+0002A7r 1               @modify:
+0002A7r 1  BD rr rr             lda data_buf,x
+0002AAr 1  0A                   asl a
+0002ABr 1  45 rr                eor fold_val
+0002ADr 1  9D rr rr             sta data_buf,x
+0002B0r 1  E8                   inx
+0002B1r 1  E0 80                cpx #DATA_SIZE
+0002B3r 1  D0 F2                bne @modify
+0002B5r 1               
+0002B5r 1  C6 rr                dec counter
+0002B7r 1  D0 D9                bne @outer
+0002B9r 1  60                   rts
+0002BAr 1               .endproc
+0002BAr 1               
+0002BAr 1               ; Generate Fibonacci sequence up to F24
+0002BAr 1               .proc generate_fibonacci
+0002BAr 1                       ; F1 = 1, F2 = 1
+0002BAr 1  A9 01                lda #1
+0002BCr 1  8D rr rr             sta fib_table
+0002BFr 1  9C rr rr             stz fib_table+1
+0002C2r 1  8D rr rr             sta fib_table+2
+0002C5r 1  9C rr rr             stz fib_table+3
+0002C8r 1               
+0002C8r 1  A2 02                ldx #2          ; Start at F3
+0002CAr 1               @loop:
+0002CAr 1                       ; Get F(n-2)
+0002CAr 1  8A                   txa
+0002CBr 1  0A                   asl a           ; x2 for 16-bit index
+0002CCr 1  A8                   tay
+0002CDr 1  88                   dey
+0002CEr 1  88                   dey
+0002CFr 1  88                   dey
+0002D0r 1  88                   dey             ; Y = (n-2) * 2
+0002D1r 1  B9 rr rr             lda fib_table,y
+0002D4r 1  85 rr                sta fib_n2
+0002D6r 1  B9 rr rr             lda fib_table+1,y
+0002D9r 1  85 rr                sta fib_n2+1
+0002DBr 1               
+0002DBr 1                       ; Get F(n-1)
+0002DBr 1  C8                   iny
+0002DCr 1  C8                   iny             ; Y = (n-1) * 2
+0002DDr 1  B9 rr rr             lda fib_table,y
+0002E0r 1  85 rr                sta fib_n1
+0002E2r 1  B9 rr rr             lda fib_table+1,y
+0002E5r 1  85 rr                sta fib_n1+1
+0002E7r 1               
+0002E7r 1                       ; F(n) = F(n-1) + F(n-2)
+0002E7r 1  18                   clc
+0002E8r 1  A5 rr                lda fib_n1
+0002EAr 1  65 rr                adc fib_n2
+0002ECr 1  85 rr                sta temp
+0002EEr 1  A5 rr                lda fib_n1+1
+0002F0r 1  65 rr                adc fib_n2+1
+0002F2r 1  85 rr                sta temp+1
+0002F4r 1               
+0002F4r 1                       ; Store F(n)
+0002F4r 1  C8                   iny
+0002F5r 1  C8                   iny             ; Y = n * 2
+0002F6r 1  A5 rr                lda temp
+0002F8r 1  99 rr rr             sta fib_table,y
+0002FBr 1  A5 rr                lda temp+1
+0002FDr 1  99 rr rr             sta fib_table+1,y
+000300r 1               
+000300r 1  E8                   inx
+000301r 1  E0 18                cpx #FIB_COUNT
+000303r 1  D0 C5                bne @loop
+000305r 1  60                   rts
+000306r 1               .endproc
+000306r 1               
+000306r 1               ; Calculate factorial chain: 1! * 2! / 1! * 3! / 2! ... up to 8!
+000306r 1               ; This effectively computes 8! through the chain
+000306r 1               .proc factorial_chain
+000306r 1                       ; Start with 1
+000306r 1  A9 01                lda #1
+000308r 1  85 rr                sta result
+00030Ar 1  64 rr                stz result+1
+00030Cr 1               
+00030Cr 1  A9 02                lda #2          ; Start multiplying from 2
+00030Er 1  85 rr                sta counter
+000310r 1               
+000310r 1               @loop:
+000310r 1                       ; Multiply result by counter (16-bit x 8-bit)
+000310r 1  20 rr rr             jsr multiply_8
+000313r 1               
+000313r 1  E6 rr                inc counter
+000315r 1  A5 rr                lda counter
+000317r 1  C9 09                cmp #FACT_MAX+1
+000319r 1  D0 F5                bne @loop
+00031Br 1  60                   rts
+00031Cr 1               .endproc
+00031Cr 1               
+00031Cr 1               ; Multiply result by counter (8-bit multiplier)
+00031Cr 1               .proc multiply_8
+00031Cr 1  A5 rr                lda result
+00031Er 1  85 rr                sta temp
+000320r 1  A5 rr                lda result+1
+000322r 1  85 rr                sta temp+1
+000324r 1               
+000324r 1  64 rr                stz result
+000326r 1  64 rr                stz result+1
+000328r 1               
+000328r 1  A5 rr                lda counter
+00032Ar 1  85 rr                sta accum       ; Multiplier in accum
+00032Cr 1               
+00032Cr 1               @loop:
+00032Cr 1  46 rr                lsr accum
+00032Er 1  90 0D                bcc @no_add
+000330r 1  18                   clc
+000331r 1  A5 rr                lda result
+000333r 1  65 rr                adc temp
+000335r 1  85 rr                sta result
+000337r 1  A5 rr                lda result+1
+000339r 1  65 rr                adc temp+1
+00033Br 1  85 rr                sta result+1
+00033Dr 1               @no_add:
+00033Dr 1  06 rr                asl temp
+00033Fr 1  26 rr                rol temp+1
+000341r 1  A5 rr                lda accum
+000343r 1  D0 E7                bne @loop
+000345r 1  60                   rts
+000346r 1               .endproc
+000346r 1               
+000346r 1               ; Bit manipulation cascade
+000346r 1               ; Shift, rotate, and XOR through various patterns
+000346r 1               .proc bit_cascade
+000346r 1  A9 AA                lda #$AA
+000348r 1  85 rr                sta result
+00034Ar 1  A9 55                lda #$55
+00034Cr 1  85 rr                sta result+1
+00034Er 1               
+00034Er 1  A2 80                ldx #128        ; 128 iterations (was 32)
+000350r 1               @loop:
+000350r 1                       ; ROL through both bytes
+000350r 1  26 rr                rol result
+000352r 1  26 rr                rol result+1
+000354r 1               
+000354r 1                       ; XOR with iteration count
+000354r 1  8A                   txa
+000355r 1  45 rr                eor result
+000357r 1  85 rr                sta result
+000359r 1               
+000359r 1                       ; ROR the high byte
+000359r 1  66 rr                ror result+1
+00035Br 1               
+00035Br 1                       ; Bit-reverse nibble swap
+00035Br 1  A5 rr                lda result
+00035Dr 1  29 0F                and #$0F
+00035Fr 1  0A                   asl a
+000360r 1  0A                   asl a
+000361r 1  0A                   asl a
+000362r 1  0A                   asl a
+000363r 1  85 rr                sta temp
+000365r 1  A5 rr                lda result
+000367r 1  4A                   lsr a
+000368r 1  4A                   lsr a
+000369r 1  4A                   lsr a
+00036Ar 1  4A                   lsr a
+00036Br 1  05 rr                ora temp
+00036Dr 1  85 rr                sta result
+00036Fr 1               
+00036Fr 1  CA                   dex
+000370r 1  D0 DE                bne @loop
+000372r 1  60                   rts
+000373r 1               .endproc
+000373r 1               
+000373r 1               ; Verify checksum hasn't been corrupted during tests
+000373r 1               .proc verify_checksum
+000373r 1                       ; Recompute checksum
+000373r 1  20 rr rr             jsr compute_checksum
+000376r 1               
+000376r 1                       ; Compare with stored (will be different due to XOR folding)
+000376r 1  A9 rr                lda #<verify_msg
+000378r 1  85 rr                sta str_ptr
+00037Ar 1  A9 rr                lda #>verify_msg
+00037Cr 1  85 rr                sta str_ptr+1
+00037Er 1  20 rr rr             jsr print_string
+000381r 1  A5 rr                lda checksum+1
+000383r 1  20 rr rr             jsr print_hex
+000386r 1  A5 rr                lda checksum
+000388r 1  20 rr rr             jsr print_hex
+00038Br 1  A9 rr                lda #<modified_msg
+00038Dr 1  85 rr                sta str_ptr
+00038Fr 1  A9 rr                lda #>modified_msg
+000391r 1  85 rr                sta str_ptr+1
+000393r 1  20 rr rr             jsr print_string
+000396r 1  60                   rts
+000397r 1               .endproc
+000397r 1               
+000397r 1               ; Intensive nested loop stress test
+000397r 1               .proc loop_stress
+000397r 1  64 rr                stz accum
+000399r 1  64 rr                stz accum+1
+00039Br 1               
+00039Br 1  A2 00                ldx #0          ; Outer loop
+00039Dr 1               @outer:
+00039Dr 1  A0 00                ldy #0          ; Inner loop
+00039Fr 1               @inner:
+00039Fr 1                       ; Complex accumulation
+00039Fr 1  18                   clc
+0003A0r 1  8A                   txa
+0003A1r 1  65 rr                adc accum
+0003A3r 1  85 rr                sta accum
+0003A5r 1  98                   tya
+0003A6r 1  65 rr                adc accum+1
+0003A8r 1  85 rr                sta accum+1
+0003AAr 1               
+0003AAr 1                       ; XOR pattern
+0003AAr 1  8A                   txa
+0003ABr 1  45 rr                eor accum
+0003ADr 1  85 rr                sta accum
+0003AFr 1               
+0003AFr 1  C8                   iny
+0003B0r 1  D0 ED                bne @inner
+0003B2r 1               
+0003B2r 1  E8                   inx
+0003B3r 1  D0 E8                bne @outer
+0003B5r 1  60                   rts
+0003B6r 1               .endproc
+0003B6r 1               
+0003B6r 1               ; ========================================
+0003B6r 1               ; TEST 8: Count primes up to PRIME_LIMIT
+0003B6r 1               ; ========================================
+0003B6r 1               .proc count_primes
+0003B6r 1  64 rr                stz prime_cnt
+0003B8r 1               
+0003B8r 1  A9 02                lda #2              ; Start at 2
+0003BAr 1  85 rr                sta counter
+0003BCr 1               
+0003BCr 1               @check_loop:
+0003BCr 1  20 rr rr             jsr is_prime
+0003BFr 1  90 02                bcc @not_prime
+0003C1r 1  E6 rr                inc prime_cnt
+0003C3r 1               @not_prime:
+0003C3r 1  E6 rr                inc counter
+0003C5r 1  A5 rr                lda counter
+0003C7r 1  C9 C8                cmp #PRIME_LIMIT
+0003C9r 1  90 F1                bcc @check_loop
+0003CBr 1  60                   rts
+0003CCr 1               .endproc
+0003CCr 1               
+0003CCr 1               ; Check if counter is prime
+0003CCr 1               ; Returns: Carry set if prime
+0003CCr 1               .proc is_prime
+0003CCr 1  A5 rr                lda counter
+0003CEr 1  C9 02                cmp #2
+0003D0r 1  F0 29                beq @is_prime       ; 2 is prime
+0003D2r 1  90 29                bcc @not_prime      ; < 2 not prime
+0003D4r 1               
+0003D4r 1                       ; Check if even
+0003D4r 1  29 01                and #$01
+0003D6r 1  F0 25                beq @not_prime      ; Even numbers > 2 not prime
+0003D8r 1               
+0003D8r 1                       ; Trial division from 3 upward
+0003D8r 1  A9 03                lda #3
+0003DAr 1  85 rr                sta divisor
+0003DCr 1               
+0003DCr 1               @div_loop:
+0003DCr 1                       ; If divisor > counter/2, it's prime (simplified check)
+0003DCr 1  A5 rr                lda divisor
+0003DEr 1  C5 rr                cmp counter
+0003E0r 1  B0 19                bcs @is_prime       ; divisor >= n, so prime
+0003E2r 1               
+0003E2r 1                       ; Check if counter % divisor == 0
+0003E2r 1  A5 rr                lda counter
+0003E4r 1  85 rr                sta dividend
+0003E6r 1  64 rr                stz dividend+1
+0003E8r 1  20 rr rr             jsr divide_8
+0003EBr 1               
+0003EBr 1                       ; If remainder (in A) is 0, not prime
+0003EBr 1  C9 00                cmp #0
+0003EDr 1  F0 0E                beq @not_prime
+0003EFr 1               
+0003EFr 1                       ; Next odd divisor
+0003EFr 1  E6 rr                inc divisor
+0003F1r 1  E6 rr                inc divisor
+0003F3r 1               
+0003F3r 1                       ; Safety: stop if divisor wrapped or too big
+0003F3r 1  A5 rr                lda divisor
+0003F5r 1  F0 04                beq @is_prime
+0003F7r 1  C5 rr                cmp counter
+0003F9r 1  90 E1                bcc @div_loop
+0003FBr 1               
+0003FBr 1               @is_prime:
+0003FBr 1  38                   sec
+0003FCr 1  60                   rts
+0003FDr 1               @not_prime:
+0003FDr 1  18                   clc
+0003FEr 1  60                   rts
+0003FFr 1               .endproc
+0003FFr 1               
+0003FFr 1               ; Divide dividend by divisor, result in dividend, remainder in A
+0003FFr 1               .proc divide_8
+0003FFr 1  A2 08                ldx #8
+000401r 1  A9 00                lda #0
+000403r 1               @loop:
+000403r 1  06 rr                asl dividend
+000405r 1  2A                   rol a
+000406r 1  C5 rr                cmp divisor
+000408r 1  90 04                bcc @no_sub
+00040Ar 1  E5 rr                sbc divisor
+00040Cr 1  E6 rr                inc dividend
+00040Er 1               @no_sub:
+00040Er 1  CA                   dex
+00040Fr 1  D0 F2                bne @loop
+000411r 1  60                   rts
+000412r 1               .endproc
+000412r 1               
+000412r 1               ; ========================================
+000412r 1               ; TEST 9: Bubble Sort Test
+000412r 1               ; ========================================
+000412r 1               .proc bubble_sort_test
+000412r 1                       ; Initialize sort buffer with descending values
+000412r 1  A2 7F                ldx #127
+000414r 1  A9 7F                lda #127
+000416r 1               @init:
+000416r 1  9D rr rr             sta sort_buf,x
+000419r 1  CA                   dex
+00041Ar 1  10 FA                bpl @init
+00041Cr 1               
+00041Cr 1                       ; Shuffle a bit with XOR pattern
+00041Cr 1  A2 00                ldx #0
+00041Er 1               @shuffle:
+00041Er 1  BD rr rr             lda sort_buf,x
+000421r 1  49 55                eor #$55
+000423r 1  29 7F                and #$7F
+000425r 1  9D rr rr             sta sort_buf,x
+000428r 1  E8                   inx
+000429r 1  E0 80                cpx #128
+00042Br 1  D0 F1                bne @shuffle
+00042Dr 1               
+00042Dr 1                       ; Bubble sort
+00042Dr 1  20 rr rr             jsr bubble_sort
+000430r 1               
+000430r 1                       ; Verify sorted
+000430r 1  A2 00                ldx #0
+000432r 1               @verify:
+000432r 1  BD rr rr             lda sort_buf,x
+000435r 1  E8                   inx
+000436r 1  E0 80                cpx #128
+000438r 1  F0 13                beq @done
+00043Ar 1  DD rr rr             cmp sort_buf,x
+00043Dr 1  90 F3                bcc @verify
+00043Fr 1  F0 F1                beq @verify
+000441r 1                       ; Not sorted - fail
+000441r 1  A9 rr                lda #<fail_msg
+000443r 1  85 rr                sta str_ptr
+000445r 1  A9 rr                lda #>fail_msg
+000447r 1  85 rr                sta str_ptr+1
+000449r 1  20 rr rr             jsr print_string
+00044Cr 1  60                   rts
+00044Dr 1               @done:
+00044Dr 1  A9 rr                lda #<pass_msg
+00044Fr 1  85 rr                sta str_ptr
+000451r 1  A9 rr                lda #>pass_msg
+000453r 1  85 rr                sta str_ptr+1
+000455r 1  20 rr rr             jsr print_string
+000458r 1  60                   rts
+000459r 1               .endproc
+000459r 1               
+000459r 1               .proc bubble_sort
+000459r 1  A9 01                lda #1
+00045Br 1  85 rr                sta counter2        ; Swapped flag
+00045Dr 1               
+00045Dr 1               @outer:
+00045Dr 1  A5 rr                lda counter2
+00045Fr 1  F0 25                beq @done           ; No swaps = sorted
+000461r 1               
+000461r 1  64 rr                stz counter2        ; Clear swap flag
+000463r 1  A2 00                ldx #0
+000465r 1               
+000465r 1               @inner:
+000465r 1  BD rr rr             lda sort_buf,x
+000468r 1  DD rr rr             cmp sort_buf+1,x
+00046Br 1  90 11                bcc @no_swap
+00046Dr 1  F0 0F                beq @no_swap
+00046Fr 1               
+00046Fr 1                       ; Swap
+00046Fr 1  A8                   tay
+000470r 1  BD rr rr             lda sort_buf+1,x
+000473r 1  9D rr rr             sta sort_buf,x
+000476r 1  98                   tya
+000477r 1  9D rr rr             sta sort_buf+1,x
+00047Ar 1               
+00047Ar 1  A9 01                lda #1
+00047Cr 1  85 rr                sta counter2        ; Mark swapped
+00047Er 1               
+00047Er 1               @no_swap:
+00047Er 1  E8                   inx
+00047Fr 1  E0 7F                cpx #127            ; 128 bytes - 1
+000481r 1  D0 E2                bne @inner
+000483r 1  4C rr rr             jmp @outer
+000486r 1               
+000486r 1               @done:
+000486r 1  60                   rts
+000487r 1               .endproc
+000487r 1               
+000487r 1               ; ========================================
+000487r 1               ; TEST 10: CRC-16 CCITT
+000487r 1               ; ========================================
+000487r 1               .proc crc16_test
+000487r 1                       ; Initialize CRC
+000487r 1  A9 FF                lda #$FF
+000489r 1  85 rr                sta crc
+00048Br 1  85 rr                sta crc+1
+00048Dr 1               
+00048Dr 1                       ; CRC over data buffer
+00048Dr 1  A2 00                ldx #0
+00048Fr 1               @loop:
+00048Fr 1  BD rr rr             lda data_buf,x
+000492r 1  20 rr rr             jsr crc16_byte
+000495r 1  E8                   inx
+000496r 1  E0 80                cpx #DATA_SIZE
+000498r 1  D0 F5                bne @loop
+00049Ar 1  60                   rts
+00049Br 1               .endproc
+00049Br 1               
+00049Br 1               .proc crc16_byte
+00049Br 1  45 rr                eor crc+1
+00049Dr 1  85 rr                sta crc+1
+00049Fr 1               
+00049Fr 1  A0 08                ldy #8
+0004A1r 1               @bit_loop:
+0004A1r 1  A5 rr                lda crc
+0004A3r 1  0A                   asl a
+0004A4r 1  26 rr                rol crc+1
+0004A6r 1  85 rr                sta crc
+0004A8r 1  90 0C                bcc @no_xor
+0004AAr 1               
+0004AAr 1                       ; XOR with polynomial $1021
+0004AAr 1  A5 rr                lda crc
+0004ACr 1  49 21                eor #$21
+0004AEr 1  85 rr                sta crc
+0004B0r 1  A5 rr                lda crc+1
+0004B2r 1  49 10                eor #$10
+0004B4r 1  85 rr                sta crc+1
+0004B6r 1               
+0004B6r 1               @no_xor:
+0004B6r 1  88                   dey
+0004B7r 1  D0 E8                bne @bit_loop
+0004B9r 1  60                   rts
+0004BAr 1               .endproc
+0004BAr 1               
+0004BAr 1               ; ========================================
+0004BAr 1               ; TEST 11: GCD Euclidean Algorithm
+0004BAr 1               ; ========================================
+0004BAr 1               .proc gcd_test
+0004BAr 1                       ; GCD(252, 105)
+0004BAr 1  A9 FC                lda #252
+0004BCr 1  85 rr                sta gcd_a
+0004BEr 1  64 rr                stz gcd_a+1
+0004C0r 1  A9 69                lda #105
+0004C2r 1  85 rr                sta gcd_b
+0004C4r 1  64 rr                stz gcd_b+1
+0004C6r 1               
+0004C6r 1  20 rr rr             jsr gcd_euclid
+0004C9r 1               
+0004C9r 1  A5 rr                lda gcd_a
+0004CBr 1  85 rr                sta result
+0004CDr 1  A5 rr                lda gcd_a+1
+0004CFr 1  85 rr                sta result+1
+0004D1r 1  60                   rts
+0004D2r 1               .endproc
+0004D2r 1               
+0004D2r 1               .proc gcd_euclid
+0004D2r 1               @loop:
+0004D2r 1                       ; If b == 0, done
+0004D2r 1  A5 rr                lda gcd_b
+0004D4r 1  05 rr                ora gcd_b+1
+0004D6r 1  F0 1E                beq @done
+0004D8r 1               
+0004D8r 1                       ; a = a mod b, swap a and b
+0004D8r 1  20 rr rr             jsr mod_16
+0004DBr 1               
+0004DBr 1                       ; Swap: temp = a, a = b, b = temp
+0004DBr 1  A5 rr                lda gcd_a
+0004DDr 1  85 rr                sta temp
+0004DFr 1  A5 rr                lda gcd_a+1
+0004E1r 1  85 rr                sta temp+1
+0004E3r 1               
+0004E3r 1  A5 rr                lda gcd_b
+0004E5r 1  85 rr                sta gcd_a
+0004E7r 1  A5 rr                lda gcd_b+1
+0004E9r 1  85 rr                sta gcd_a+1
+0004EBr 1               
+0004EBr 1  A5 rr                lda temp
+0004EDr 1  85 rr                sta gcd_b
+0004EFr 1  A5 rr                lda temp+1
+0004F1r 1  85 rr                sta gcd_b+1
+0004F3r 1               
+0004F3r 1  4C rr rr             jmp @loop
+0004F6r 1               @done:
+0004F6r 1  60                   rts
+0004F7r 1               .endproc
+0004F7r 1               
+0004F7r 1               ; gcd_a = gcd_a mod gcd_b
+0004F7r 1               .proc mod_16
+0004F7r 1               @loop:
+0004F7r 1                       ; While a >= b, a -= b
+0004F7r 1  A5 rr                lda gcd_a+1
+0004F9r 1  C5 rr                cmp gcd_b+1
+0004FBr 1  90 18                bcc @done
+0004FDr 1  D0 06                bne @subtract
+0004FFr 1  A5 rr                lda gcd_a
+000501r 1  C5 rr                cmp gcd_b
+000503r 1  90 10                bcc @done
+000505r 1               
+000505r 1               @subtract:
+000505r 1  38                   sec
+000506r 1  A5 rr                lda gcd_a
+000508r 1  E5 rr                sbc gcd_b
+00050Ar 1  85 rr                sta gcd_a
+00050Cr 1  A5 rr                lda gcd_a+1
+00050Er 1  E5 rr                sbc gcd_b+1
+000510r 1  85 rr                sta gcd_a+1
+000512r 1  4C rr rr             jmp @loop
+000515r 1               @done:
+000515r 1  60                   rts
+000516r 1               .endproc
+000516r 1               
+000516r 1               ; ========================================
+000516r 1               ; TEST 12: Extended XOR Folding (256 iterations)
+000516r 1               ; ========================================
+000516r 1               .proc extended_fold
+000516r 1  64 rr                stz fold_val
+000518r 1  64 rr                stz fold_val+1
+00051Ar 1  64 rr                stz counter         ; 256 iterations (wraps)
+00051Cr 1               
+00051Cr 1               @outer:
+00051Cr 1                       ; XOR all bytes together with rotation
+00051Cr 1  A2 00                ldx #0
+00051Er 1  A5 rr                lda fold_val
+000520r 1               @inner:
+000520r 1  5D rr rr             eor data_buf,x
+000523r 1  2A                   rol a
+000524r 1  E8                   inx
+000525r 1  E0 80                cpx #DATA_SIZE
+000527r 1  D0 F7                bne @inner
+000529r 1               
+000529r 1                       ; Accumulate
+000529r 1  45 rr                eor fold_val
+00052Br 1  85 rr                sta fold_val
+00052Dr 1  66 rr                ror fold_val+1
+00052Fr 1  45 rr                eor fold_val+1
+000531r 1  85 rr                sta fold_val+1
+000533r 1               
+000533r 1  C6 rr                dec counter
+000535r 1  D0 E5                bne @outer
+000537r 1  60                   rts
+000538r 1               .endproc
+000538r 1               
+000538r 1               ; ========================================
+000538r 1               ; TEST 13: Power calculation 2^15
+000538r 1               ; ========================================
+000538r 1               .proc power_test
+000538r 1                       ; Calculate 2^15 by repeated doubling
+000538r 1  A9 01                lda #1
+00053Ar 1  85 rr                sta result
+00053Cr 1  64 rr                stz result+1
+00053Er 1               
+00053Er 1  A2 0F                ldx #15
+000540r 1               @loop:
+000540r 1  06 rr                asl result
+000542r 1  26 rr                rol result+1
+000544r 1  CA                   dex
+000545r 1  D0 F9                bne @loop
+000547r 1               
+000547r 1                       ; Result should be $8000 = 32768
+000547r 1  60                   rts
+000548r 1               .endproc
+000548r 1               
+000548r 1               ; Print hex byte in A
+000548r 1               .proc print_hex
+000548r 1  48                   pha
+000549r 1  4A                   lsr a
+00054Ar 1  4A                   lsr a
+00054Br 1  4A                   lsr a
+00054Cr 1  4A                   lsr a
+00054Dr 1  20 rr rr             jsr print_nibble
+000550r 1  68                   pla
+000551r 1  29 0F                and #$0F
+000553r 1               print_nibble:
+000553r 1  C9 0A                cmp #10
+000555r 1  90 02                bcc @is_digit
+000557r 1  69 06                adc #6
+000559r 1               @is_digit:
+000559r 1  69 30                adc #'0'
+00055Br 1  20 D2 FF             jsr CHROUT
+00055Er 1  60                   rts
+00055Fr 1               .endproc
+00055Fr 1               
+00055Fr 1               ; Print CRLF
+00055Fr 1               .proc print_crlf
+00055Fr 1  A9 0D                lda #$0D
+000561r 1  20 D2 FF             jsr CHROUT
+000564r 1  60                   rts
+000565r 1               .endproc
+000565r 1               
+000565r 1               ; Print null-terminated string
+000565r 1               .proc print_string
+000565r 1  A0 00                ldy #0
+000567r 1               @loop:
+000567r 1  B1 rr                lda (str_ptr),y
+000569r 1  F0 06                beq @done
+00056Br 1  20 D2 FF             jsr CHROUT
+00056Er 1  C8                   iny
+00056Fr 1  D0 F6                bne @loop
+000571r 1               @done:
+000571r 1  60                   rts
+000572r 1               .endproc
+000572r 1               
+000572r 1               ; Data strings
+000572r 1               banner:
+000572r 1  0D 3D 3D 3D          .byte $0D, "================================", $0D
+000576r 1  3D 3D 3D 3D  
+00057Ar 1  3D 3D 3D 3D  
+000594r 1  20 20 36 35          .byte "  65C02 FOLDING STRESS TEST", $0D
+000598r 1  43 30 32 20  
+00059Cr 1  46 4F 4C 44  
+0005B0r 1  20 20 20 45          .byte "   Extended Edition (13 tests)", $0D
+0005B4r 1  78 74 65 6E  
+0005B8r 1  64 65 64 20  
+0005CFr 1  3D 3D 3D 3D          .byte "================================", $0D, 0
+0005D3r 1  3D 3D 3D 3D  
+0005D7r 1  3D 3D 3D 3D  
+0005F1r 1               
+0005F1r 1               test1_msg:
+0005F1r 1  0D 54 65 73          .byte $0D, "Test 1: Init & Checksum...", $0D, 0
+0005F5r 1  74 20 31 3A  
+0005F9r 1  20 49 6E 69  
+00060Er 1               chk_msg:
+00060Er 1  20 20 43 68          .byte "  Checksum: $", 0
+000612r 1  65 63 6B 73  
+000616r 1  75 6D 3A 20  
+00061Cr 1               
+00061Cr 1               test2_msg:
+00061Cr 1  0D 54 65 73          .byte $0D, "Test 2: XOR Folding (255 iter)...", $0D, 0
+000620r 1  74 20 32 3A  
+000624r 1  20 58 4F 52  
+000640r 1               fold_msg:
+000640r 1  20 20 46 6F          .byte "  Fold result: $", 0
+000644r 1  6C 64 20 72  
+000648r 1  65 73 75 6C  
+000651r 1               
+000651r 1               test3_msg:
+000651r 1  0D 54 65 73          .byte $0D, "Test 3: Fibonacci (24 terms)...", $0D, 0
+000655r 1  74 20 33 3A  
+000659r 1  20 46 69 62  
+000673r 1               fib_msg:
+000673r 1  20 20 46 32          .byte "  F24 = $", 0
+000677r 1  34 20 3D 20  
+00067Br 1  24 00        
+00067Dr 1               
+00067Dr 1               test4_msg:
+00067Dr 1  0D 54 65 73          .byte $0D, "Test 4: Factorial Chain...", $0D, 0
+000681r 1  74 20 34 3A  
+000685r 1  20 46 61 63  
+00069Ar 1               fact_msg:
+00069Ar 1  20 20 38 21          .byte "  8! = $", 0
+00069Er 1  20 3D 20 24  
+0006A2r 1  00           
+0006A3r 1               
+0006A3r 1               test5_msg:
+0006A3r 1  0D 54 65 73          .byte $0D, "Test 5: Bit Cascade (128x)...", $0D, 0
+0006A7r 1  74 20 35 3A  
+0006ABr 1  20 42 69 74  
+0006C3r 1               bits_msg:
+0006C3r 1  20 20 52 65          .byte "  Result: $", 0
+0006C7r 1  73 75 6C 74  
+0006CBr 1  3A 20 24 00  
+0006CFr 1               
+0006CFr 1               test6_msg:
+0006CFr 1  0D 54 65 73          .byte $0D, "Test 6: Memory Verify...", $0D, 0
+0006D3r 1  74 20 36 3A  
+0006D7r 1  20 4D 65 6D  
+0006EAr 1               verify_msg:
+0006EAr 1  20 20 4E 65          .byte "  New checksum: $", 0
+0006EEr 1  77 20 63 68  
+0006F2r 1  65 63 6B 73  
+0006FCr 1               modified_msg:
+0006FCr 1  20 28 6D 6F          .byte " (modified)", $0D, 0
+000700r 1  64 69 66 69  
+000704r 1  65 64 29 0D  
+000709r 1               
+000709r 1               test7_msg:
+000709r 1  0D 54 65 73          .byte $0D, "Test 7: Loop Stress (64K iter)...", $0D, 0
+00070Dr 1  74 20 37 3A  
+000711r 1  20 4C 6F 6F  
+00072Dr 1               loop_msg:
+00072Dr 1  20 20 41 63          .byte "  Accumulator: $", 0
+000731r 1  63 75 6D 75  
+000735r 1  6C 61 74 6F  
+00073Er 1               
+00073Er 1               test8_msg:
+00073Er 1  0D 54 65 73          .byte $0D, "Test 8: Prime Count (<200)...", $0D, 0
+000742r 1  74 20 38 3A  
+000746r 1  20 50 72 69  
+00075Er 1               prime_msg:
+00075Er 1  20 20 50 72          .byte "  Primes found: $", 0
+000762r 1  69 6D 65 73  
+000766r 1  20 66 6F 75  
+000770r 1               
+000770r 1               test9_msg:
+000770r 1  0D 54 65 73          .byte $0D, "Test 9: Bubble Sort (128 bytes)...", $0D, 0
+000774r 1  74 20 39 3A  
+000778r 1  20 42 75 62  
+000795r 1               sort_msg:
+000795r 1  20 20 53 6F          .byte "  Sorted: ", 0
+000799r 1  72 74 65 64  
+00079Dr 1  3A 20 00     
+0007A0r 1               
+0007A0r 1               test10_msg:
+0007A0r 1  0D 54 65 73          .byte $0D, "Test 10: CRC-16 CCITT...", $0D, 0
+0007A4r 1  74 20 31 30  
+0007A8r 1  3A 20 43 52  
+0007BBr 1               crc_msg:
+0007BBr 1  20 20 43 52          .byte "  CRC: $", 0
+0007BFr 1  43 3A 20 24  
+0007C3r 1  00           
+0007C4r 1               
+0007C4r 1               test11_msg:
+0007C4r 1  0D 54 65 73          .byte $0D, "Test 11: GCD Euclid (252,105)...", $0D, 0
+0007C8r 1  74 20 31 31  
+0007CCr 1  3A 20 47 43  
+0007E7r 1               gcd_msg:
+0007E7r 1  20 20 47 43          .byte "  GCD: $", 0
+0007EBr 1  44 3A 20 24  
+0007EFr 1  00           
+0007F0r 1               
+0007F0r 1               test12_msg:
+0007F0r 1  0D 54 65 73          .byte $0D, "Test 12: Extended Fold (256x)...", $0D, 0
+0007F4r 1  74 20 31 32  
+0007F8r 1  3A 20 45 78  
+000813r 1               efold_msg:
+000813r 1  20 20 52 65          .byte "  Result: $", 0
+000817r 1  73 75 6C 74  
+00081Br 1  3A 20 24 00  
+00081Fr 1               
+00081Fr 1               test13_msg:
+00081Fr 1  0D 54 65 73          .byte $0D, "Test 13: Power 2^15...", $0D, 0
+000823r 1  74 20 31 33  
+000827r 1  3A 20 50 6F  
+000838r 1               pow_msg:
+000838r 1  20 20 32 5E          .byte "  2^15 = $", 0
+00083Cr 1  31 35 20 3D  
+000840r 1  20 24 00     
+000843r 1               
+000843r 1               pass_msg:
+000843r 1  20 20 50 41          .byte "  PASS", $0D, 0
+000847r 1  53 53 0D 00  
+00084Br 1               fail_msg:
+00084Br 1  20 20 46 41          .byte "  FAIL", $0D, 0
+00084Fr 1  49 4C 0D 00  
+000853r 1               
+000853r 1               done_msg:
+000853r 1  0D 3D 3D 3D          .byte $0D, "================================", $0D
+000857r 1  3D 3D 3D 3D  
+00085Br 1  3D 3D 3D 3D  
+000875r 1  20 20 41 4C          .byte "  ALL 13 TESTS COMPLETE!", $0D
+000879r 1  4C 20 31 33  
+00087Dr 1  20 54 45 53  
+00088Er 1  3D 3D 3D 3D          .byte "================================", $0D, 0
+000892r 1  3D 3D 3D 3D  
+000896r 1  3D 3D 3D 3D  
+0008AFr 1               

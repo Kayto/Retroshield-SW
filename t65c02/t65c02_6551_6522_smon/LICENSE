@@ -1,0 +1,115 @@
+MIT License
+
+Copyright (c) 2025 Multiple Contributors
+
+This project combines work from multiple authors and sources:
+
+================================================================================
+SMON Monitor (Original)
+================================================================================
+Original 6502 machine language monitor for Commodore 64/C128
+Authors: Norfried Mann and Dietrich Weineck (1984)
+Published in 64'er magazine (Nov/Dec 1984, Jan 1985)
+https://www.c64-wiki.com/wiki/SMON
+
+License: Public Domain (magazine-published code from 1984)
+
+================================================================================
+SMON6502 Port
+================================================================================
+Port of SMON to standalone 6502 systems
+Author: David Hansel (dhansel, 2023)
+https://github.com/dhansel/smon6502/
+
+Based on disassembly by Michael (cbmuser)
+https://github.com/cbmuser/smon-reassembly
+
+License: No explicit license stated (credited appropriately)
+
+================================================================================
+RetroShield Hardware & Firmware
+================================================================================
+6502 hardware interface for Arduino/Teensy
+Author: Erturk Kocalar, 8Bitforce.com (2019)
+https://www.8bitforce.com/projects/retroshield/
+
+Copyright (c) 2019 Erturk Kocalar, 8Bitforce.com
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+Teensy 4.1 SMON Implementation & 6522 Emulation
+================================================================================
+SMON port for Teensy 4.1 RetroShield 6502
+6522 VIA emulation
+Author: kayto@github.com (2025)
+
+Copyright (c) 2025 kayto@github.com
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+Build Tools
+================================================================================
+Docker image: dawidbuchwald/cc65-tools-make
+Author: Dawid Buchwald
+https://github.com/dbuchwald/cc65-tools
+
+Licensed under the Apache License 2.0
+https://www.apache.org/licenses/LICENSE-2.0
+
+================================================================================
+Summary
+================================================================================
+
+This project is distributed under the MIT License for all newly created work
+(Teensy 4.1 implementation, ACIA/VIA emulation, build system integration).
+
+Original SMON code from 1984 is considered public domain as magazine-published
+code from that era.
+
+RetroShield firmware components retain their original MIT License from 
+Erturk Kocalar (2019).
+
+SMON6502 port by dhansel (2023) is credited and used with respect to its
+open-source nature, though no explicit license was stated in the original
+repository.
+
+All contributors are acknowledged and credited appropriately in source files
+and documentation.
+
+For the complete text of the MIT License, see above.
+For the Apache License 2.0 (build tools), see:
+https://www.apache.org/licenses/LICENSE-2.0

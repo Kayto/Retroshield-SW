@@ -1,0 +1,43 @@
+ca65 V2.19 - Git 62da869e4
+Main file   : config.s
+Current file: config.s
+
+000000r 1               ; Base address of the VIA chip in the system. The VIA is only
+000000r 1               ; necessary if you
+000000r 1               ; - want to use the trace (TW/TQ/TS) functions in SMON
+000000r 1               ; and/or
+000000r 1               ; - want to use the VIA UART driver
+000000r 1               ; If neither of these applies, set the VIA address to 0
+000000r 1               VIA = $9000
+000000r 1               
+000000r 1               ; Highest address of installed RAM - all RAM is assumed to be
+000000r 1               ; in one consecutive range from 0-RAMTOP
+000000r 1               RAMTOP = $7FFF
+000000r 1               
+000000r 1               ; main CPU clock rate (used for UART timing)
+000000r 1               CPU_CLOCK_RATE  =1000000 ;1843200
+000000r 1               
+000000r 1               ; Currently supported UART options are:
+000000r 1               ;   6522: MOS 6522 (VIA)
+000000r 1               ;   6551: MOS 6551 or WDC 65C51N (ACIA)
+000000r 1               ;   6850: Motorola MC6850 UART
+000000r 1               UART_TYPE = 6551
+000000r 1               
+000000r 1               ;;; ------------------------------------------------------------------
+000000r 1               
+000000r 1               VIA_DRB  = VIA +  0    ; VIA port B data register
+000000r 1               VIA_DRA  = VIA +  1    ; VIA port A data register
+000000r 1               VIA_DDRB = VIA +  2    ; VIA port B data direction register
+000000r 1               VIA_DDRA = VIA +  3    ; VIA port A data direction register
+000000r 1               VIA_T1CL = VIA +  4    ; VIA timer 1 counter low register
+000000r 1               VIA_T1CH = VIA +  5    ; VIA timer 1 counter high register
+000000r 1               VIA_T1LL = VIA +  6    ; VIA timer 1 latch low register
+000000r 1               VIA_T1LH = VIA +  7    ; VIA timer 1 latch high register
+000000r 1               VIA_T2CL = VIA +  8    ; VIA timer 2 counter low register
+000000r 1               VIA_T2CH = VIA +  9    ; VIA timer 2 counter low register
+000000r 1               VIA_SR   = VIA + 10    ; VIA shift register
+000000r 1               VIA_ACR  = VIA + 11    ; VIA peripheral control register
+000000r 1               VIA_PCR  = VIA + 12    ; VIA peripheral control register
+000000r 1               VIA_IFR  = VIA + 13    ; VIA interrupt flag register
+000000r 1               VIA_IER  = VIA + 14    ; VIA interrupt enable register
+000000r 1               

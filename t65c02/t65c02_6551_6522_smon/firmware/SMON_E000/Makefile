@@ -1,0 +1,41 @@
+# SMON Standalone ROM at $E000
+# Minimal SMON build without shell, LCD, boot animation, or EhBASIC
+
+CA65_BINARY=ca65
+LD65_BINARY=ld65
+MINIPRO_BINARY=minipro
+EEPROM_MODEL=AT28C256
+HEXDUMP_BINARY=hexdump
+
+CPU_FLAG=--cpu 65C02
+CA65_FLAGS=$(CPU_FLAG) -Ddb6502
+
+BUILD_FOLDER=build
+
+FIRMWARE_CFG=smon_e000.cfg
+FIRMWARE_BINARY=$(BUILD_FOLDER)/SMON_E000.bin
+FIRMWARE_MAP=$(BUILD_FOLDER)/SMON_E000.map
+
+ASM_SOURCES=smon_e000.s config.s uart_6551.s
+OBJECTS=$(BUILD_FOLDER)/smon_e000.o $(BUILD_FOLDER)/config.o $(BUILD_FOLDER)/uart_6551.o
+
+all: $(FIRMWARE_BINARY)
+
+$(BUILD_FOLDER)/%.o: %.s $(FIRMWARE_CFG)
+	@mkdir -p $(BUILD_FOLDER)
+	$(CA65_BINARY) $(CA65_FLAGS) -o $@ -l $(@:.o=.lst) $<
+
+$(FIRMWARE_BINARY): $(OBJECTS)
+	@mkdir -p $(BUILD_FOLDER)
+	$(LD65_BINARY) -C $(FIRMWARE_CFG) -m $(FIRMWARE_MAP) -o $@ $^
+
+clean:
+	rm -f $(BUILD_FOLDER)/*.o $(BUILD_FOLDER)/*.lst $(BUILD_FOLDER)/*.map $(FIRMWARE_BINARY)
+
+test: $(FIRMWARE_BINARY)
+	$(HEXDUMP_BINARY) -C $<
+
+install: $(FIRMWARE_BINARY)
+	$(MINIPRO_BINARY) -p $(EEPROM_MODEL) -w $<
+
+.PHONY: all clean test install

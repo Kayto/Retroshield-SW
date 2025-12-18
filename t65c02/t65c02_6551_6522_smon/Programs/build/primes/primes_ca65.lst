@@ -1,0 +1,343 @@
+ca65 V2.19 - Git 62da869e4
+Main file   : primes_ca65.s
+Current file: primes_ca65.s
+
+000000r 1               ; Prime Number Finder for CA65 - FULL 16-BIT SWEEP (REVERSE)
+000000r 1               ; Starts at $1000
+000000r 1               ; Uses SMON Kernal-style I/O routines
+000000r 1               ; Tests TRUE PRIMES using trial division algorithm
+000000r 1               ; REVERSE SWEEP: Tests from 65535 DOWN to 2 (hardest first!)
+000000r 1               
+000000r 1               .setcpu "65C02"
+000000r 1               
+000000r 1               ; SMON Kernal I/O vectors
+000000r 1               CHROUT = $FFD2          ; Character output
+000000r 1               CHRIN  = $FFCF          ; Character input
+000000r 1               
+000000r 1               ; Zero page variables
+000000r 1               .segment "ZEROPAGE"
+000000r 1  xx xx        current:     .res 2      ; Current number to test (16-bit)
+000002r 1  xx xx        divisor:     .res 2      ; Trial divisor (16-bit)
+000004r 1  xx xx        dividend:    .res 2      ; Dividend for division
+000006r 1  xx xx        quotient:    .res 2      ; Quotient result
+000008r 1  xx xx        remainder:   .res 2      ; Remainder result
+00000Ar 1  xx xx        prime_count: .res 2      ; Count of primes found (16-bit)
+00000Cr 1  xx xx        test_count:  .res 2      ; Total tests performed
+00000Er 1  xx           temp:        .res 1
+00000Fr 1  xx xx        str_ptr:     .res 2
+000011r 1  xx           line_pos:    .res 1      ; Position on current line
+000012r 1               
+000012r 1               .segment "CODE"
+000000r 1               
+000000r 1               .proc main
+000000r 1                       ; Initialize
+000000r 1  64 rr                stz prime_count
+000002r 1  64 rr                stz prime_count+1
+000004r 1  64 rr                stz test_count
+000006r 1  64 rr                stz test_count+1
+000008r 1  64 rr                stz line_pos
+00000Ar 1               
+00000Ar 1                       ; Start at 65535 (highest, hardest first)
+00000Ar 1  A9 FF                lda #$FF
+00000Cr 1  85 rr                sta current
+00000Er 1  85 rr                sta current+1
+000010r 1               
+000010r 1                       ; Print banner
+000010r 1  A9 rr                lda #<banner
+000012r 1  85 rr                sta str_ptr
+000014r 1  A9 rr                lda #>banner
+000016r 1  85 rr                sta str_ptr+1
+000018r 1  20 rr rr             jsr print_string
+00001Br 1               
+00001Br 1               main_loop:
+00001Br 1                       ; Test if current is prime
+00001Br 1  20 rr rr             jsr is_prime
+00001Er 1  90 22                bcc not_prime       ; Carry clear = not prime
+000020r 1               
+000020r 1                       ; It's prime! Print it (space separated)
+000020r 1  A5 rr                lda current+1
+000022r 1  20 rr rr             jsr print_hex
+000025r 1  A5 rr                lda current
+000027r 1  20 rr rr             jsr print_hex
+00002Ar 1  A9 20                lda #' '
+00002Cr 1  20 rr rr             jsr print_char
+00002Fr 1               
+00002Fr 1                       ; Track line position, newline every 8 primes
+00002Fr 1  E6 rr                inc line_pos
+000031r 1  A5 rr                lda line_pos
+000033r 1  29 07                and #$07        ; Every 8 primes
+000035r 1  D0 05                bne @no_newline
+000037r 1  A9 0D                lda #$0D
+000039r 1  20 rr rr             jsr print_char
+00003Cr 1               @no_newline:
+00003Cr 1               
+00003Cr 1                       ; Increment prime counter
+00003Cr 1  E6 rr                inc prime_count
+00003Er 1  D0 02                bne not_prime
+000040r 1  E6 rr                inc prime_count+1
+000042r 1               
+000042r 1               not_prime:
+000042r 1                       ; Increment test counter
+000042r 1  E6 rr                inc test_count
+000044r 1  D0 02                bne @no_inc
+000046r 1  E6 rr                inc test_count+1
+000048r 1               @no_inc:
+000048r 1               
+000048r 1                       ; Next number (16-bit decrement)
+000048r 1  A5 rr                lda current
+00004Ar 1  D0 02                bne @no_borrow
+00004Cr 1  C6 rr                dec current+1
+00004Er 1               @no_borrow:
+00004Er 1  C6 rr                dec current
+000050r 1               
+000050r 1                       ; Check if we've gone below 2
+000050r 1  A5 rr                lda current+1
+000052r 1  D0 09                bne @continue       ; High byte not zero, keep going
+000054r 1  A5 rr                lda current
+000056r 1  C9 02                cmp #2
+000058r 1  B0 03                bcs @continue       ; >= 2, keep going
+00005Ar 1  4C rr rr             jmp done            ; Below 2, we're done!
+00005Dr 1               
+00005Dr 1               @continue:
+00005Dr 1  4C rr rr             jmp main_loop
+000060r 1               
+000060r 1               done:
+000060r 1                       ; Final newline
+000060r 1  A9 0D                lda #$0D
+000062r 1  20 rr rr             jsr print_char
+000065r 1               
+000065r 1                       ; Print summary
+000065r 1  A9 rr                lda #<summary1
+000067r 1  85 rr                sta str_ptr
+000069r 1  A9 rr                lda #>summary1
+00006Br 1  85 rr                sta str_ptr+1
+00006Dr 1  20 rr rr             jsr print_string
+000070r 1               
+000070r 1  A5 rr                lda prime_count+1
+000072r 1  20 rr rr             jsr print_hex
+000075r 1  A5 rr                lda prime_count
+000077r 1  20 rr rr             jsr print_hex
+00007Ar 1               
+00007Ar 1  A9 rr                lda #<summary2
+00007Cr 1  85 rr                sta str_ptr
+00007Er 1  A9 rr                lda #>summary2
+000080r 1  85 rr                sta str_ptr+1
+000082r 1  20 rr rr             jsr print_string
+000085r 1               
+000085r 1                       ; Return to monitor
+000085r 1  00                   brk
+000086r 1  00                   .byte $00
+000087r 1               .endproc
+000087r 1               
+000087r 1               ; Test if number in 'current' is prime
+000087r 1               ; Returns: Carry set = prime, Carry clear = not prime
+000087r 1               .proc is_prime
+000087r 1                       ; Special case: 2 is prime
+000087r 1  A5 rr                lda current+1
+000089r 1  D0 08                bne @not_two
+00008Br 1  A5 rr                lda current
+00008Dr 1  C9 02                cmp #2
+00008Fr 1  D0 02                bne @not_two
+000091r 1  38                   sec             ; 2 is prime
+000092r 1  60                   rts
+000093r 1               
+000093r 1               @not_two:
+000093r 1                       ; Even numbers > 2 are not prime
+000093r 1  A5 rr                lda current
+000095r 1  29 01                and #1
+000097r 1  D0 02                bne @odd
+000099r 1  18                   clc             ; Even, not prime
+00009Ar 1  60                   rts
+00009Br 1               
+00009Br 1               @odd:
+00009Br 1                       ; Test divisibility from 3 up to sqrt(current)
+00009Br 1  A9 03                lda #3
+00009Dr 1  85 rr                sta divisor
+00009Fr 1  64 rr                stz divisor+1
+0000A1r 1               
+0000A1r 1               @div_loop:
+0000A1r 1                       ; First check if divisor*divisor > current
+0000A1r 1                       ; We do: current / divisor = quotient
+0000A1r 1                       ; If quotient < divisor, we've tested all needed divisors -> prime!
+0000A1r 1  A5 rr                lda current
+0000A3r 1  85 rr                sta dividend
+0000A5r 1  A5 rr                lda current+1
+0000A7r 1  85 rr                sta dividend+1
+0000A9r 1               
+0000A9r 1                       ; Divide current by divisor
+0000A9r 1  20 rr rr             jsr divide16
+0000ACr 1               
+0000ACr 1                       ; Check if quotient < divisor (means divisor > sqrt(current))
+0000ACr 1  A5 rr                lda quotient+1
+0000AEr 1  C5 rr                cmp divisor+1
+0000B0r 1  90 28                bcc @is_prime   ; quotient < divisor, it's prime!
+0000B2r 1  D0 06                bne @test_div   ; quotient > divisor, need to test
+0000B4r 1  A5 rr                lda quotient
+0000B6r 1  C5 rr                cmp divisor
+0000B8r 1  90 20                bcc @is_prime   ; quotient < divisor, it's prime!
+0000BAr 1               
+0000BAr 1               @test_div:
+0000BAr 1                       ; If remainder is 0, not prime
+0000BAr 1  A5 rr                lda remainder
+0000BCr 1  05 rr                ora remainder+1
+0000BEr 1  D0 02                bne @not_divisible
+0000C0r 1  18                   clc             ; Divisible, not prime
+0000C1r 1  60                   rts
+0000C2r 1               
+0000C2r 1               @not_divisible:
+0000C2r 1                       ; Try next odd divisor
+0000C2r 1  E6 rr                inc divisor
+0000C4r 1  E6 rr                inc divisor     ; Add 2 to stay odd
+0000C6r 1  D0 02                bne @no_carry
+0000C8r 1  E6 rr                inc divisor+1
+0000CAr 1               @no_carry:
+0000CAr 1               
+0000CAr 1                       ; Check if divisor*divisor > current (we've tested enough)
+0000CAr 1                       ; Compare divisor with quotient: if divisor > quotient, done
+0000CAr 1  A5 rr                lda divisor+1
+0000CCr 1  C5 rr                cmp quotient+1
+0000CEr 1  90 D1                bcc @div_loop   ; divisor < quotient, continue
+0000D0r 1  D0 08                bne @is_prime   ; divisor > quotient, it's prime
+0000D2r 1  A5 rr                lda divisor
+0000D4r 1  C5 rr                cmp quotient
+0000D6r 1  90 C9                bcc @div_loop   ; divisor < quotient, continue
+0000D8r 1  F0 C7                beq @div_loop   ; divisor = quotient, test once more
+0000DAr 1                       ; divisor > quotient, it's prime
+0000DAr 1               
+0000DAr 1               @is_prime:
+0000DAr 1  38                   sec             ; It's prime!
+0000DBr 1  60                   rts
+0000DCr 1               .endproc
+0000DCr 1               
+0000DCr 1               ; 16-bit division: dividend / divisor = quotient, remainder
+0000DCr 1               ; Input: dividend (16-bit), divisor (16-bit)
+0000DCr 1               ; Output: quotient (16-bit), remainder (16-bit)
+0000DCr 1               .proc divide16
+0000DCr 1                       ; Initialize remainder to 0
+0000DCr 1  64 rr                stz remainder
+0000DEr 1  64 rr                stz remainder+1
+0000E0r 1               
+0000E0r 1                       ; Handle division by zero
+0000E0r 1  A5 rr                lda divisor
+0000E2r 1  05 rr                ora divisor+1
+0000E4r 1  D0 01                bne @start
+0000E6r 1  60                   rts
+0000E7r 1               
+0000E7r 1               @start:
+0000E7r 1  A2 10                ldx #16         ; 16 bits to process
+0000E9r 1               
+0000E9r 1               @loop:
+0000E9r 1                       ; Shift dividend left, MSB goes into remainder
+0000E9r 1  06 rr                asl dividend
+0000EBr 1  26 rr                rol dividend+1
+0000EDr 1  26 rr                rol remainder
+0000EFr 1  26 rr                rol remainder+1
+0000F1r 1               
+0000F1r 1                       ; Try to subtract divisor from remainder
+0000F1r 1  38                   sec
+0000F2r 1  A5 rr                lda remainder
+0000F4r 1  E5 rr                sbc divisor
+0000F6r 1  85 rr                sta temp
+0000F8r 1  A5 rr                lda remainder+1
+0000FAr 1  E5 rr                sbc divisor+1
+0000FCr 1               
+0000FCr 1                       ; If result is negative (borrow), don't subtract
+0000FCr 1  90 08                bcc @no_sub
+0000FEr 1               
+0000FEr 1                       ; Result is positive, keep it
+0000FEr 1  85 rr                sta remainder+1
+000100r 1  A5 rr                lda temp
+000102r 1  85 rr                sta remainder
+000104r 1  E6 rr                inc dividend    ; Set bit 0 of dividend (becomes quotient)
+000106r 1               
+000106r 1               @no_sub:
+000106r 1  CA                   dex
+000107r 1  D0 E0                bne @loop
+000109r 1               
+000109r 1                       ; Dividend now contains quotient
+000109r 1  A5 rr                lda dividend
+00010Br 1  85 rr                sta quotient
+00010Dr 1  A5 rr                lda dividend+1
+00010Fr 1  85 rr                sta quotient+1
+000111r 1  60                   rts
+000112r 1               .endproc
+000112r 1               
+000112r 1               ; Print hex byte in A
+000112r 1               .proc print_hex
+000112r 1  48                   pha
+000113r 1  4A                   lsr a
+000114r 1  4A                   lsr a
+000115r 1  4A                   lsr a
+000116r 1  4A                   lsr a
+000117r 1  20 rr rr             jsr print_nibble
+00011Ar 1  68                   pla
+00011Br 1  29 0F                and #$0F
+00011Dr 1               print_nibble:
+00011Dr 1  C9 0A                cmp #10
+00011Fr 1  90 02                bcc @is_digit
+000121r 1  69 06                adc #6              ; Add 7 (carry is set from CMP)
+000123r 1               @is_digit:
+000123r 1  69 30                adc #'0'
+000125r 1  20 rr rr             jsr print_char
+000128r 1  60                   rts
+000129r 1               .endproc
+000129r 1               
+000129r 1               ; Print character in A via SMON
+000129r 1               .proc print_char
+000129r 1  20 D2 FF             jsr CHROUT
+00012Cr 1  60                   rts
+00012Dr 1               .endproc
+00012Dr 1               
+00012Dr 1               ; Print null-terminated string
+00012Dr 1               .proc print_string
+00012Dr 1  A0 00                ldy #0
+00012Fr 1               @loop:
+00012Fr 1  B1 rr                lda (str_ptr),y
+000131r 1  F0 06                beq @done
+000133r 1  20 D2 FF             jsr CHROUT
+000136r 1  C8                   iny
+000137r 1  D0 F6                bne @loop
+000139r 1               @done:
+000139r 1  60                   rts
+00013Ar 1               .endproc
+00013Ar 1               
+00013Ar 1               ; Data section
+00013Ar 1               banner:
+00013Ar 1  0D 3D 3D 3D          .byte $0D, "================================", $0D
+00013Er 1  3D 3D 3D 3D  
+000142r 1  3D 3D 3D 3D  
+00015Cr 1  20 20 36 35          .byte "  65C02 PRIME STRESS TEST", $0D
+000160r 1  43 30 32 20  
+000164r 1  50 52 49 4D  
+000176r 1  20 20 52 45          .byte "  REVERSE: 65535 DOWN TO 2", $0D
+00017Ar 1  56 45 52 53  
+00017Er 1  45 3A 20 36  
+000191r 1  20 20 48 61          .byte "  Hardest first, gets easier!", $0D
+000195r 1  72 64 65 73  
+000199r 1  74 20 66 69  
+0001AFr 1  3D 3D 3D 3D          .byte "================================", $0D
+0001B3r 1  3D 3D 3D 3D  
+0001B7r 1  3D 3D 3D 3D  
+0001D0r 1  50 72 69 6D          .byte "Primes:", $0D, 0
+0001D4r 1  65 73 3A 0D  
+0001D8r 1  00           
+0001D9r 1               
+0001D9r 1               summary1:
+0001D9r 1  0D 3D 3D 3D          .byte $0D, "================================", $0D
+0001DDr 1  3D 3D 3D 3D  
+0001E1r 1  3D 3D 3D 3D  
+0001FBr 1  46 55 4C 4C          .byte "FULL SWEEP COMPLETE!", $0D
+0001FFr 1  20 53 57 45  
+000203r 1  45 50 20 43  
+000210r 1  20 20 50 72          .byte "  Primes found: $", 0
+000214r 1  69 6D 65 73  
+000218r 1  20 66 6F 75  
+000222r 1               
+000222r 1               summary2:
+000222r 1  0D 20 20 28          .byte $0D, "  (Tested 2 to 65535)", $0D
+000226r 1  54 65 73 74  
+00022Ar 1  65 64 20 32  
+000239r 1  3D 3D 3D 3D          .byte "================================", $0D, 0
+00023Dr 1  3D 3D 3D 3D  
+000241r 1  3D 3D 3D 3D  
+00025Ar 1               

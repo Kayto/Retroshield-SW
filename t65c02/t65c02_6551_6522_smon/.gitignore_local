@@ -1,16 +1,3 @@
-# Ignore all .7z, .zip, and .txt files
-*.7z
-*.zip
-*.txt
-
-# Ignore the 'comp' directory
-comp/
-
-# Ignore the 'archive' directory specifically inside 'code'
-code/archive/
-# Exclude compile.txt
-compile.txt
-
 # SMON Build Artifacts
 t65c02_6551_6522_smon/firmware/SMON_E000/build/
 t65c02_6551_6522_smon/Programs/build/**/*.o
