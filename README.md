@@ -53,6 +53,7 @@
 
 ### t65c02
 * `t65c02t_6551acia_EhBASIC`: Implements 6551 ACIA emulation for EhBASIC i/o.
+*  `t65c02_6551_6522_smon`: Implements 6551 ACIA and 6522 emulation for SMON, allowing trace functionality.
 
 ### tz80
 
