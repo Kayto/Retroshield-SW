@@ -9,9 +9,10 @@
 
 - Provide assembleable versions of the current 8bitforce repo roms. This allows easier development with known syntax and assemblers.
 
-- Add aditional ROMs examples that may not be part of the current 8bitforce repo.
+- Add additional ROMs examples that may not be part of the current 8bitforce repo.
 
-- Stretch aim, to develop some new monitors where neccesary adding native assembly/disassembly functions for each board. 
+- Develop some new monitors where neccesary adding native assembly/disassembly functions for each board. 
+
 
 ## Repo Contents
 
@@ -53,7 +54,7 @@
 
 ### t65c02
 * `t65c02t_6551acia_EhBASIC`: Implements 6551 ACIA emulation for EhBASIC i/o.
-*  `t65c02_6551_6522_smon`: Implements 6551 ACIA and 6522 emulation for SMON, allowing trace functionality.
+* `t65c02_6551_6522_smon`: Implements 6551 ACIA and 6522 emulation for SMON, allowing trace functionality.
 
 ### tz80
 
